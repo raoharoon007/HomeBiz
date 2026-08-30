@@ -34,13 +34,18 @@ export function VendorProfilePage() {
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
 
   const reviews = Storage.getReviews(vendor.id);
-  const isFav = Storage.isFavorite(user.id, vendor.id);
+  const isFav = user ? Storage.isFavorite(user.id, vendor.id) : false;
   const relatedVendors = Storage.getVendors()
     .filter((v) => v.id !== vendor.id && (v.category === vendor.category || v.city === vendor.city))
     .slice(0, 3);
 
   const handleStartChat = () => {
-    const conv = Storage.getOrCreateConversation(user.id, vendor.id, {
+    if (!user) {
+      router.push('/auth/login');
+      return;
+    }
+
+    Storage.getOrCreateConversation(user.id, vendor.id, {
       type: 'GENERAL',
       id: vendor.id,
       title: `Inquiry: ${vendor.businessName}`,
@@ -49,6 +54,10 @@ export function VendorProfilePage() {
   };
 
   const handleBookService = (serviceId: string) => {
+    if (!user) {
+      router.push('/auth/login');
+      return;
+    }
     router.push(`/booking/${vendor.id}?serviceId=${serviceId}`);
   };
 
@@ -58,7 +67,7 @@ export function VendorProfilePage() {
         title: `${vendor.businessName} on HomeBiz Pakistan`,
         text: vendor.tagline,
         url: window.location.href,
-      }).catch(() => {});
+      }).catch(() => { });
     } else {
       navigator.clipboard.writeText(window.location.href);
       alert('Profile link copied to clipboard!');
@@ -160,10 +169,15 @@ export function VendorProfilePage() {
         {/* Action CTAs */}
         <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
           <button
-            onClick={() => Storage.toggleFavorite(user.id, vendor.id)}
-            className={`p-3 rounded-full border border-[#e3e2e1] transition-colors ${
-              isFav ? 'bg-red-50 text-red-500 border-red-200' : 'bg-white text-stone-700 hover:bg-[#f4f3f2]'
-            }`}
+            onClick={() => {
+              if (!user) {
+                router.push('/auth/login');
+                return;
+              }
+              Storage.toggleFavorite(user.id, vendor.id);
+            }}
+            className={`p-3 rounded-full border border-[#e3e2e1] transition-colors ${isFav ? 'bg-red-50 text-red-500 border-red-200' : 'bg-white text-stone-700 hover:bg-[#f4f3f2]'
+              }`}
             title="Save to favorites"
           >
             <Heart className={`w-4 h-4 ${isFav ? 'fill-red-500' : ''}`} />
@@ -187,6 +201,12 @@ export function VendorProfilePage() {
 
           <Link
             href={`/request?vendorId=${vendor.id}&category=${vendor.category}`}
+            onClick={(e) => {
+              if (!user) {
+                e.preventDefault();
+                router.push('/auth/login');
+              }
+            }}
             className="px-5 py-3 rounded-full bg-[#003527] hover:bg-[#064e3b] text-white font-bold text-xs shadow-md flex items-center gap-2 transition-transform hover:scale-105"
           >
             <PlusCircle className="w-4 h-4 text-[#ffe088]" />

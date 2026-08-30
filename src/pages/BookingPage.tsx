@@ -25,6 +25,28 @@ export function BookingPage() {
   const router = useRouter();
   const { user } = useAuth();
 
+  if (!user) {
+    return (
+      <div className="max-w-md mx-auto my-16 text-center bg-white rounded-3xl p-8 border border-[#e3e2e1] space-y-4 shadow-sm">
+        <div className="w-12 h-12 rounded-full bg-[#FFF1E7] text-[#735c00] mx-auto flex items-center justify-center font-bold text-lg">
+          🔒
+        </div>
+        <h2 className="text-xl font-bold text-[#1a1c1c]">Sign in to book this service</h2>
+        <p className="text-xs text-[#665d55] leading-relaxed">
+          Please log in to confirm your order details and complete your booking securely.
+        </p>
+        <div className="pt-2 flex justify-center gap-3">
+          <a href="/auth/login" onClick={(e) => { e.preventDefault(); router.push('/auth/login'); }} className="px-6 py-2.5 rounded-full bg-[#003527] text-white text-xs font-bold shadow-xs hover:bg-[#064e3b]">
+            Sign In
+          </a>
+          <a href="/auth/register" onClick={(e) => { e.preventDefault(); router.push('/auth/register'); }} className="px-6 py-2.5 rounded-full bg-[#faf9f8] border border-[#e3e2e1] text-[#003527] text-xs font-bold hover:bg-[#f4f3f2]">
+            Create Account
+          </a>
+        </div>
+      </div>
+    );
+  }
+
   // Extract vendorId from /booking/:id
   const vendorId = pathname.replace('/booking/', '').split('?')[0];
   const vendor = Storage.getVendorById(vendorId) || Storage.getVendors()[0];
@@ -129,20 +151,18 @@ export function BookingPage() {
             return (
               <div key={lbl} className="flex items-center gap-2 flex-shrink-0">
                 <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-colors ${
-                    isDone
+                  className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-colors ${isDone
                       ? 'bg-[#003527] text-white'
                       : isCurrent
-                      ? 'bg-[#ffe088] text-[#735c00] ring-4 ring-[#ffe088]/30 font-black'
-                      : 'bg-[#f4f3f2] text-[#665d55]'
-                  }`}
+                        ? 'bg-[#ffe088] text-[#735c00] ring-4 ring-[#ffe088]/30 font-black'
+                        : 'bg-[#f4f3f2] text-[#665d55]'
+                    }`}
                 >
                   {isDone ? '✓' : stepNum}
                 </div>
                 <span
-                  className={`text-xs font-semibold hidden sm:inline ${
-                    isCurrent ? 'text-[#003527] font-bold' : 'text-[#665d55]'
-                  }`}
+                  className={`text-xs font-semibold hidden sm:inline ${isCurrent ? 'text-[#003527] font-bold' : 'text-[#665d55]'
+                    }`}
                 >
                   {lbl}
                 </span>
@@ -171,11 +191,10 @@ export function BookingPage() {
                 <div
                   key={srv.id}
                   onClick={() => setSelectedService(srv)}
-                  className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${
-                    isSelected
+                  className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${isSelected
                       ? 'border-[#003527] bg-[#b0f0d6]/10 shadow-md'
                       : 'border-[#e3e2e1] hover:border-stone-400'
-                  }`}
+                    }`}
                 >
                   <img src={srv.image} alt={srv.title} className="w-full h-32 rounded-xl object-cover mb-3" />
                   <h3 className="font-bold text-sm text-[#1a1c1c]">{srv.title}</h3>
@@ -201,9 +220,8 @@ export function BookingPage() {
                   return (
                     <label
                       key={addon.id}
-                      className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-colors ${
-                        isChecked ? 'bg-[#FFF1E7] border-[#ffe088]' : 'bg-[#faf9f8] border-[#e3e2e1]'
-                      }`}
+                      className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-colors ${isChecked ? 'bg-[#FFF1E7] border-[#ffe088]' : 'bg-[#faf9f8] border-[#e3e2e1]'
+                        }`}
                     >
                       <div className="flex items-center gap-3">
                         <input
@@ -274,11 +292,10 @@ export function BookingPage() {
                     key={slot}
                     type="button"
                     onClick={() => setTimeSlot(slot)}
-                    className={`text-xs p-2.5 rounded-xl border text-left flex items-center justify-between transition-colors ${
-                      timeSlot === slot
+                    className={`text-xs p-2.5 rounded-xl border text-left flex items-center justify-between transition-colors ${timeSlot === slot
                         ? 'bg-[#003527] text-white font-bold border-[#003527]'
                         : 'bg-[#faf9f8] text-[#1a1c1c] border-[#e3e2e1] hover:bg-[#f4f3f2]'
-                    }`}
+                      }`}
                   >
                     <span>{slot}</span>
                     {timeSlot === slot && <CheckCircle className="w-4 h-4 text-[#b0f0d6]" />}
@@ -333,11 +350,10 @@ export function BookingPage() {
                     key={m.id}
                     type="button"
                     onClick={() => setDeliveryType(m.id as any)}
-                    className={`p-3 rounded-2xl border text-center flex flex-col items-center gap-1.5 transition-colors ${
-                      deliveryType === m.id
+                    className={`p-3 rounded-2xl border text-center flex flex-col items-center gap-1.5 transition-colors ${deliveryType === m.id
                         ? 'bg-[#FFF1E7] border-[#ffe088] font-bold text-[#735c00]'
                         : 'bg-[#faf9f8] border-[#e3e2e1] text-[#404944]'
-                    }`}
+                      }`}
                   >
                     <Icon className="w-4 h-4" />
                     <span className="text-xs">{m.label}</span>
@@ -496,11 +512,10 @@ export function BookingPage() {
               return (
                 <label
                   key={method.id}
-                  className={`flex items-start gap-3 p-4 rounded-2xl border-2 cursor-pointer transition-colors ${
-                    isSelected
+                  className={`flex items-start gap-3 p-4 rounded-2xl border-2 cursor-pointer transition-colors ${isSelected
                       ? 'border-[#003527] bg-[#b0f0d6]/10'
                       : 'border-[#e3e2e1] hover:border-stone-300'
-                  }`}
+                    }`}
                 >
                   <input
                     type="radio"

@@ -12,6 +12,28 @@ export function RequestPage() {
   const searchParams = useSearchParams();
   const { user } = useAuth();
 
+  if (!user) {
+    return (
+      <div className="max-w-md mx-auto my-16 text-center bg-white rounded-3xl p-8 border border-[#e3e2e1] space-y-4 shadow-sm">
+        <div className="w-12 h-12 rounded-full bg-[#b0f0d6] text-[#003527] mx-auto flex items-center justify-center font-bold text-lg">
+          🔐
+        </div>
+        <h2 className="text-xl font-bold text-[#1a1c1c]">Sign in to request quotes</h2>
+        <p className="text-xs text-[#665d55] leading-relaxed">
+          To post a custom request and receive price quotes from trusted home businesses, please sign in or create your account first.
+        </p>
+        <div className="pt-2 flex justify-center gap-3">
+          <a href="/auth/login" onClick={(e) => { e.preventDefault(); router.push('/auth/login'); }} className="px-6 py-2.5 rounded-full bg-[#003527] text-white text-xs font-bold shadow-xs hover:bg-[#064e3b]">
+            Sign In
+          </a>
+          <a href="/auth/register" onClick={(e) => { e.preventDefault(); router.push('/auth/register'); }} className="px-6 py-2.5 rounded-full bg-[#faf9f8] border border-[#e3e2e1] text-[#003527] text-xs font-bold hover:bg-[#f4f3f2]">
+            Create Account
+          </a>
+        </div>
+      </div>
+    );
+  }
+
   const preselectedCategory = searchParams.get('category') || 'cakes-baking';
 
   const [category, setCategory] = useState(preselectedCategory);
