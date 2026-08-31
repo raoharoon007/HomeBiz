@@ -64,7 +64,7 @@ export function VendorProfilePage() {
   const handleShare = () => {
     if (navigator.share) {
       navigator.share({
-        title: `${vendor.businessName} on HomeBiz Pakistan`,
+        title: `${vendor.businessName} on HomeBiz`,
         text: vendor.tagline,
         url: window.location.href,
       }).catch(() => { });

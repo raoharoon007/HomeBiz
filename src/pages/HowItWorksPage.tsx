@@ -23,7 +23,7 @@ export function HowItWorksPage() {
           Platform Architecture & Process
         </span>
         <h1 className="text-3xl sm:text-5xl font-black text-[#1a1c1c] font-['Plus_Jakarta_Sans']">
-          How HomeBiz Pakistan Operates
+          How HomeBiz Operates
         </h1>
         <p className="text-xs sm:text-sm text-[#665d55] leading-relaxed">
           We empower home-based businesses with automated scheduling, verified customer reviews, direct bilingual messaging, and protected payments.

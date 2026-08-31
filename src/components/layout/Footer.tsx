@@ -18,12 +18,12 @@ export function Footer() {
                 HB
               </div>
               <span className="font-bold text-2xl tracking-tight text-white font-['Plus_Jakarta_Sans']">
-                HomeBiz<span className="text-[#ffe088]">.pk</span>
+                HomeBiz
               </span>
             </div>
 
             <p className="text-emerald-100/80 text-sm max-w-sm leading-relaxed">
-              Empowering Pakistan's home-based chefs, artisanal bakers, bespoke tailors, mehndi artists, and tutors to scale their craft with trusted local clients.
+              Empowering home-based chefs, artisanal bakers, bespoke tailors, mehndi artists, and tutors to scale their craft with trusted local clients.
             </p>
 
             <div className="flex flex-wrap items-center gap-3 pt-2">
@@ -120,11 +120,11 @@ export function Footer() {
 
         {/* Bottom bar */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-emerald-200/70">
-          <p>© {new Date().getFullYear()} HomeBiz Pakistan. Handcrafted with local love in Lahore, Karachi & Islamabad.</p>
+          <p>© {new Date().getFullYear()} HomeBiz. Handcrafted with local love across Pakistan and Australia.</p>
           <div className="flex items-center gap-1 text-emerald-100">
             <span>Made with</span>
             <Heart className="w-3.5 h-3.5 text-red-400 fill-red-400 inline" />
-            <span>for Pakistani Home Creators</span>
+            <span>for Home Creators</span>
           </div>
         </div>
       </div>

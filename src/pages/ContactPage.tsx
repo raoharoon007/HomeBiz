@@ -26,7 +26,7 @@ export function ContactPage() {
           Get in Touch
         </span>
         <h1 className="text-3xl sm:text-4xl font-black text-[#1a1c1c] font-['Plus_Jakarta_Sans']">
-          Contact HomeBiz Pakistan Support
+          Contact HomeBiz Support
         </h1>
         <p className="text-xs sm:text-sm text-[#665d55]">
           Have questions about your order, seller verification, or platform features? Our Karachi & Lahore team is here to assist.
