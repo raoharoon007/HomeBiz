@@ -42,7 +42,7 @@ export function RoleSwitcherBanner() {
         {/* Left: Brand label */}
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1 bg-[#95d3ba]/20 text-[#b0f0d6] px-2 py-0.5 rounded-full font-medium text-[11px] shrink-0">
-            🇵🇰 HomeBiz PK
+            HomeBiz • Pakistan & Australia
           </span>
         </div>
 

@@ -125,10 +125,10 @@ export function Navbar() {
               </div>
               <div className="hidden sm:flex flex-col">
                 <span className="font-bold text-lg tracking-tight text-[#003527] leading-none font-['Plus_Jakarta_Sans']">
-                  HomeBiz<span className="text-[#cca72f]">.pk</span>
+                  HomeBiz
                 </span>
                 <span className="text-[10px] text-[#665d55] tracking-widest font-medium uppercase mt-0.5">
-                  Pakistan
+                  Pakistan • Australia
                 </span>
               </div>
             </Link>
