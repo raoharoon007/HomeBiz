@@ -18,6 +18,12 @@ const CITY_COORDINATES: Record<string, { lat: number; lng: number }> = {
   Faisalabad: { lat: 31.4504, lng: 73.1350 },
   Multan: { lat: 30.1575, lng: 71.5249 },
   Peshawar: { lat: 34.0151, lng: 71.5249 },
+  Sydney: { lat: -33.8688, lng: 151.2093 },
+  Melbourne: { lat: -37.8136, lng: 144.9631 },
+  Brisbane: { lat: -27.4698, lng: 153.0251 },
+  Perth: { lat: -31.9505, lng: 115.8605 },
+  Adelaide: { lat: -34.9285, lng: 138.6007 },
+  Canberra: { lat: -35.2809, lng: 149.1300 },
 };
 
 export function InteractiveMap({

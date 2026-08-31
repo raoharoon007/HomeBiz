@@ -57,7 +57,7 @@ export function FilterSidebar({ filters, onChange, onReset, resultCount }: Filte
           onChange={(e) => handleCityChange(e.target.value)}
           className="w-full text-xs bg-[#f4f3f2] border border-[#e3e2e1] rounded-xl px-3 py-2 text-[#1a1c1c] focus:outline-none focus:border-[#003527]"
         >
-          <option value="">All Pakistani Cities</option>
+          <option value="">All Cities</option>
           {cities.map((city) => (
             <option key={city.id} value={city.name}>
               {city.name} ({city.province})
@@ -74,11 +74,10 @@ export function FilterSidebar({ filters, onChange, onReset, resultCount }: Filte
         <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
           <button
             onClick={() => handleCategoryChange('')}
-            className={`w-full text-left text-xs px-2.5 py-1.5 rounded-lg flex items-center justify-between transition-colors ${
-              filters.category === ''
+            className={`w-full text-left text-xs px-2.5 py-1.5 rounded-lg flex items-center justify-between transition-colors ${filters.category === ''
                 ? 'bg-[#003527] text-white font-bold'
                 : 'text-[#404944] hover:bg-[#f4f3f2]'
-            }`}
+              }`}
           >
             <span>All Categories</span>
           </button>
@@ -86,11 +85,10 @@ export function FilterSidebar({ filters, onChange, onReset, resultCount }: Filte
             <button
               key={cat.id}
               onClick={() => handleCategoryChange(cat.slug)}
-              className={`w-full text-left text-xs px-2.5 py-1.5 rounded-lg flex items-center justify-between transition-colors ${
-                filters.category === cat.slug
+              className={`w-full text-left text-xs px-2.5 py-1.5 rounded-lg flex items-center justify-between transition-colors ${filters.category === cat.slug
                   ? 'bg-[#003527] text-white font-bold'
                   : 'text-[#404944] hover:bg-[#f4f3f2]'
-              }`}
+                }`}
             >
               <span className="truncate">{cat.name}</span>
               <span className={`text-[10px] ${filters.category === cat.slug ? 'text-white/80' : 'text-[#665d55]'}`}>
@@ -136,11 +134,10 @@ export function FilterSidebar({ filters, onChange, onReset, resultCount }: Filte
             <button
               key={ratingVal}
               onClick={() => onChange({ ...filters, minRating: ratingVal })}
-              className={`text-xs py-1.5 px-2 rounded-xl flex items-center justify-center gap-1 border transition-all ${
-                filters.minRating === ratingVal
+              className={`text-xs py-1.5 px-2 rounded-xl flex items-center justify-center gap-1 border transition-all ${filters.minRating === ratingVal
                   ? 'bg-[#FFF1E7] text-[#735c00] border-[#ffe088] font-bold shadow-xs'
                   : 'bg-white text-[#404944] border-[#e3e2e1] hover:bg-[#f4f3f2]'
-              }`}
+                }`}
             >
               {ratingVal === 0 ? (
                 'Any'

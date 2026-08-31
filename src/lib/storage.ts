@@ -77,10 +77,34 @@ function safeSetItem<T>(key: string, value: T): void {
   }
 }
 
+function mergeSeedData<T extends { id?: string; name?: string }>(stored: T[] | null | undefined, seed: T[]): T[] {
+  if (!stored) return seed;
+
+  const built = [...stored];
+  seed.forEach((item) => {
+    const existingIndex = built.findIndex((storedItem) => {
+      if (storedItem.id && item.id) return storedItem.id === item.id;
+      return storedItem.name === item.name;
+    });
+
+    if (existingIndex >= 0) {
+      built[existingIndex] = { ...stored[existingIndex], ...item };
+    } else {
+      built.push(item);
+    }
+  });
+
+  return built;
+}
+
 // Initializer
 export function initStorage() {
   if (typeof window === 'undefined') return;
-  if (!safeGetItem(STORAGE_KEYS.VENDORS, null)) {
+
+  const storedVendors = safeGetItem(STORAGE_KEYS.VENDORS, null);
+  const storedCities = safeGetItem(STORAGE_KEYS.CITIES, null);
+
+  if (!storedVendors || !storedCities) {
     safeSetItem(STORAGE_KEYS.USERS, SEED_USERS);
     safeSetItem(STORAGE_KEYS.VENDORS, SEED_VENDORS);
     safeSetItem(STORAGE_KEYS.CATEGORIES, SEED_CATEGORIES);
@@ -97,6 +121,15 @@ export function initStorage() {
       { id: 'fav-1', customerId: 'user-c1', vendorId: 'vendor-1', createdAt: new Date().toISOString() },
     ]);
     safeSetItem(STORAGE_KEYS.ACTIVE_USER_ID, null);
+    return;
+  }
+
+  const mergedCities = mergeSeedData(storedCities, SEED_CITIES);
+  const mergedVendors = mergeSeedData(storedVendors, SEED_VENDORS);
+
+  if (mergedCities.length !== storedCities.length || mergedVendors.length !== storedVendors.length) {
+    safeSetItem(STORAGE_KEYS.CITIES, mergedCities);
+    safeSetItem(STORAGE_KEYS.VENDORS, mergedVendors);
   }
 }
 
