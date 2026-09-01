@@ -152,10 +152,10 @@ export function BookingPage() {
               <div key={lbl} className="flex items-center gap-2 flex-shrink-0">
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-colors ${isDone
-                      ? 'bg-[#003527] text-white'
-                      : isCurrent
-                        ? 'bg-[#ffe088] text-[#735c00] ring-4 ring-[#ffe088]/30 font-black'
-                        : 'bg-[#f4f3f2] text-[#665d55]'
+                    ? 'bg-[#003527] text-white'
+                    : isCurrent
+                      ? 'bg-[#ffe088] text-[#735c00] ring-4 ring-[#ffe088]/30 font-black'
+                      : 'bg-[#f4f3f2] text-[#665d55]'
                     }`}
                 >
                   {isDone ? '✓' : stepNum}
@@ -192,8 +192,8 @@ export function BookingPage() {
                   key={srv.id}
                   onClick={() => setSelectedService(srv)}
                   className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${isSelected
-                      ? 'border-[#003527] bg-[#b0f0d6]/10 shadow-md'
-                      : 'border-[#e3e2e1] hover:border-stone-400'
+                    ? 'border-[#003527] bg-[#b0f0d6]/10 shadow-md'
+                    : 'border-[#e3e2e1] hover:border-stone-400'
                     }`}
                 >
                   <img src={srv.image} alt={srv.title} className="w-full h-32 rounded-xl object-cover mb-3" />
@@ -293,8 +293,8 @@ export function BookingPage() {
                     type="button"
                     onClick={() => setTimeSlot(slot)}
                     className={`text-xs p-2.5 rounded-xl border text-left flex items-center justify-between transition-colors ${timeSlot === slot
-                        ? 'bg-[#003527] text-white font-bold border-[#003527]'
-                        : 'bg-[#faf9f8] text-[#1a1c1c] border-[#e3e2e1] hover:bg-[#f4f3f2]'
+                      ? 'bg-[#003527] text-white font-bold border-[#003527]'
+                      : 'bg-[#faf9f8] text-[#1a1c1c] border-[#e3e2e1] hover:bg-[#f4f3f2]'
                       }`}
                   >
                     <span>{slot}</span>
@@ -351,8 +351,8 @@ export function BookingPage() {
                     type="button"
                     onClick={() => setDeliveryType(m.id as any)}
                     className={`p-3 rounded-2xl border text-center flex flex-col items-center gap-1.5 transition-colors ${deliveryType === m.id
-                        ? 'bg-[#FFF1E7] border-[#ffe088] font-bold text-[#735c00]'
-                        : 'bg-[#faf9f8] border-[#e3e2e1] text-[#404944]'
+                      ? 'bg-[#FFF1E7] border-[#ffe088] font-bold text-[#735c00]'
+                      : 'bg-[#faf9f8] border-[#e3e2e1] text-[#404944]'
                       }`}
                   >
                     <Icon className="w-4 h-4" />
@@ -505,7 +505,7 @@ export function BookingPage() {
               {
                 id: 'CARD',
                 title: 'Visa / Mastercard Debit Card',
-                desc: 'Encrypted payment gateway powered by Pakistani merchant rails.',
+                desc: 'Encrypted payment gateway serving Pakistan and Australia.',
               },
             ].map((method) => {
               const isSelected = paymentMethod === method.id;
@@ -513,8 +513,8 @@ export function BookingPage() {
                 <label
                   key={method.id}
                   className={`flex items-start gap-3 p-4 rounded-2xl border-2 cursor-pointer transition-colors ${isSelected
-                      ? 'border-[#003527] bg-[#b0f0d6]/10'
-                      : 'border-[#e3e2e1] hover:border-stone-300'
+                    ? 'border-[#003527] bg-[#b0f0d6]/10'
+                    : 'border-[#e3e2e1] hover:border-stone-300'
                     }`}
                 >
                   <input

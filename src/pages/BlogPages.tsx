@@ -17,7 +17,7 @@ export function BlogPage() {
           HomeBiz Stories & Inspiration
         </h1>
         <p className="text-xs sm:text-sm text-[#665d55]">
-          Read creator spotlights, party planning guides, Pakistani dessert trends, and micro-business growth playbooks.
+          Read creator spotlights, party planning guides, culinary trends, and micro-business growth playbooks from Pakistan and Australia.
         </p>
       </div>
 
@@ -109,7 +109,7 @@ export function BlogPostPage() {
         </p>
 
         <p>
-          In recent years, Pakistan has seen an unprecedented wave of home micro-entrepreneurs. Women and artisans are transforming home kitchens and sewing tables into flourishing commercial enterprises. Powered by platforms like HomeBiz, local creators can reach genuine customers across Lahore, Karachi, Islamabad, and Rawalpindi.
+          In recent years, Pakistan and Australia have seen an unprecedented wave of home micro-entrepreneurs. Women and artisans are transforming home kitchens and sewing tables into flourishing commercial enterprises. Powered by platforms like HomeBiz, local creators can reach genuine customers across major cities in both nations.
         </p>
 
         <h3 className="text-lg font-bold text-[#1a1c1c]">Why Supporting Home Businesses Matters</h3>

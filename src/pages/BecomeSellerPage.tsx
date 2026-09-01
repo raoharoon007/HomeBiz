@@ -4,6 +4,7 @@ import { Storage } from '../lib/storage';
 import { useAuth } from '../lib/authContext';
 import { Vendor } from '../types';
 import { Store, CheckCircle, Sparkles, ShieldCheck, ArrowRight } from 'lucide-react';
+import { PricingCards } from '../components/marketplace/PricingCards';
 import confetti from 'canvas-confetti';
 
 export function BecomeSellerPage() {
@@ -122,6 +123,19 @@ export function BecomeSellerPage() {
         <p className="text-xs sm:text-sm text-emerald-100/90 max-w-2xl leading-relaxed">
           Create your verified profile in 2 minutes. Start receiving direct bookings, quote broadcasts, and customer messages from your local city.
         </p>
+      </div>
+
+      {/* Pricing Plans Section */}
+      <div className="space-y-8">
+        <div className="text-center space-y-2">
+          <h2 className="text-2xl sm:text-3xl font-black text-[#1a1c1c] font-['Plus_Jakarta_Sans']">
+            Choose Your Growth Plan
+          </h2>
+          <p className="text-xs sm:text-sm text-[#665d55] max-w-2xl mx-auto">
+            Start free and upgrade anytime as your business grows. All plans include everything you need to manage bookings, receive customer requests, and build your verified profile.
+          </p>
+        </div>
+        <PricingCards onSelectPlan={() => { }} showComparison={true} showToggle={false} />
       </div>
 
       {/* Registration Form */}

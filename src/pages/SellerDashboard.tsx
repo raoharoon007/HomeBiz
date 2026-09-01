@@ -21,6 +21,7 @@ import {
   Trash2,
   Edit,
   DollarSign,
+  Check,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -54,7 +55,7 @@ export function SellerDashboard() {
         </div>
         <h2 className="text-xl font-bold text-[#1a1c1c]">Seller Hub Access</h2>
         <p className="text-xs text-[#665d55]">
-          You are currently signed in as a **Customer** ({user.name}). To list your home business confections, tailoring, catering, or crafts on HomeBiz Pakistan, set up your seller profile!
+          You are currently signed in as a **Customer** ({user.name}). To list your home business confections, tailoring, catering, or crafts on HomeBiz (Pakistan & Australia), set up your seller profile!
         </p>
         <div className="pt-2 flex justify-center gap-3">
           <Link href="/become-a-seller" className="px-6 py-2.5 rounded-full bg-[#003527] text-white text-xs font-bold shadow-xs hover:bg-[#064e3b]">
@@ -81,6 +82,7 @@ export function SellerDashboard() {
   else if (pathname.includes('/requests')) activeTab = 'requests';
   else if (pathname.includes('/messages')) activeTab = 'messages';
   else if (pathname.includes('/reviews')) activeTab = 'reviews';
+  else if (pathname.includes('/plan')) activeTab = 'plan';
   else if (pathname.includes('/earnings')) activeTab = 'earnings';
 
   // Vendor data
@@ -116,6 +118,11 @@ export function SellerDashboard() {
     .filter((b) => b.status === 'COMPLETED' || b.paymentStatus === 'PAID')
     .reduce((sum, b) => sum + b.total, 0);
 
+  // Get current subscription
+  const currentSubscription = Storage.getSubscriptionByVendorId(vendor.id);
+  const currentPlan = vendor.currentPlan || 'free';
+  const planData = Storage.getPricingPlanBySlug(currentPlan);
+
   const navTabs = [
     { id: 'overview', label: 'Overview', path: '/seller/dashboard/overview', icon: LayoutDashboard },
     { id: 'profile', label: 'Storefront Profile', path: '/seller/dashboard/profile', icon: Store },
@@ -124,6 +131,7 @@ export function SellerDashboard() {
     { id: 'requests', label: 'Broadcast Inquiries', path: '/seller/dashboard/requests', icon: FileSpreadsheet, badge: broadcastRequests.length },
     { id: 'messages', label: 'Live Messages', path: '/seller/dashboard/messages', icon: MessageSquare },
     { id: 'reviews', label: 'Customer Reviews', path: '/seller/dashboard/reviews', icon: Star, badge: reviews.length },
+    { id: 'plan', label: 'My Plan & Billing', path: '/seller/dashboard/plan', icon: DollarSign },
     { id: 'earnings', label: 'Earnings & Payouts', path: '/seller/dashboard/earnings', icon: Wallet },
   ];
 
@@ -243,11 +251,10 @@ export function SellerDashboard() {
               <Link
                 key={tab.id}
                 href={tab.path}
-                className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-bold transition-colors ${
-                  isSelected
-                    ? 'bg-[#003527] text-white shadow-xs'
-                    : 'text-[#404944] hover:bg-[#faf9f8]'
-                }`}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-bold transition-colors ${isSelected
+                  ? 'bg-[#003527] text-white shadow-xs'
+                  : 'text-[#404944] hover:bg-[#faf9f8]'
+                  }`}
               >
                 <div className="flex items-center gap-3">
                   <Icon className={`w-4 h-4 ${isSelected ? 'text-[#ffe088]' : 'text-[#665d55]'}`} />
@@ -255,9 +262,8 @@ export function SellerDashboard() {
                 </div>
                 {tab.badge !== undefined && tab.badge > 0 && (
                   <span
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
-                      isSelected ? 'bg-white text-[#003527]' : 'bg-[#f4f3f2] text-[#404944]'
-                    }`}
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-black ${isSelected ? 'bg-white text-[#003527]' : 'bg-[#f4f3f2] text-[#404944]'
+                      }`}
                   >
                     {tab.badge}
                   </span>
@@ -691,7 +697,150 @@ export function SellerDashboard() {
             </div>
           )}
 
-          {/* TAB 8: EARNINGS & PAYOUTS */}
+          {/* TAB 8: MY PLAN & BILLING */}
+          {activeTab === 'plan' && (
+            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#e3e2e1] shadow-xs space-y-6">
+              <div className="space-y-2 pb-4 border-b border-[#f4f3f2]">
+                <h2 className="text-lg font-black text-[#1a1c1c] font-['Plus_Jakarta_Sans']">
+                  My Subscription Plan
+                </h2>
+                <p className="text-xs text-[#665d55]">Manage your pricing tier and billing information</p>
+              </div>
+
+              {/* Current Plan Card */}
+              <div className={`p-6 rounded-2xl border-2 ${currentPlan === 'featured' ? 'bg-[#FFF1E7] border-[#cca72f]' : currentPlan === 'pro' ? 'bg-[#b0f0d6]/20 border-[#003527]' : 'bg-[#faf9f8] border-[#e3e2e1]'}`}>
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <div className="text-3xl mb-2">
+                      {currentPlan === 'featured' ? '👑' : currentPlan === 'pro' ? '⚡' : '🟢'}
+                    </div>
+                    <h3 className="text-xl font-black text-[#1a1c1c] font-['Plus_Jakarta_Sans'] capitalize">
+                      {currentPlan} Plan
+                    </h3>
+                    <p className="text-xs text-[#665d55] mt-1">
+                      Active until {currentSubscription?.renewalDate ? new Date(currentSubscription.renewalDate).toLocaleDateString() : 'N/A'}
+                    </p>
+                  </div>
+                  {currentPlan !== 'featured' && (
+                    <Link
+                      href="/seller/dashboard/plan"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        alert('Upgrade feature coming soon! For now, contact support.');
+                      }}
+                      className="px-4 py-2 rounded-full bg-[#003527] text-white font-bold text-xs hover:bg-[#064e3b] transition-colors cursor-pointer"
+                    >
+                      Upgrade Plan
+                    </Link>
+                  )}
+                </div>
+
+                {planData && (
+                  <div className="space-y-3 mt-4 pt-4 border-t border-current border-opacity-10">
+                    <p className="text-xs font-bold text-[#1a1c1c]">Current Plan Features:</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {planData.features.slice(0, 4).map((feature, idx) => (
+                        <div key={idx} className="flex items-start gap-2">
+                          <Check className="w-3 h-3 text-[#003527] flex-shrink-0 mt-1" />
+                          <span className="text-xs text-[#404944]">{feature}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Billing Information */}
+              <div className="space-y-4 pt-4 border-t border-[#f4f3f2]">
+                <h3 className="font-bold text-sm text-[#1a1c1c]">Billing Details</h3>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="p-4 bg-[#faf9f8] rounded-2xl border border-[#e3e2e1]">
+                    <span className="text-[10px] font-bold text-[#665d55] uppercase tracking-wider block">
+                      Monthly Price
+                    </span>
+                    <span className="text-lg font-black text-[#003527] block mt-1">
+                      {currentSubscription?.priceAtPurchase === 0 ? 'Free' : `PKR ${currentSubscription?.priceAtPurchase.toLocaleString()}`}
+                    </span>
+                  </div>
+
+                  <div className="p-4 bg-[#b0f0d6]/20 rounded-2xl border border-[#95d3ba]/40">
+                    <span className="text-[10px] font-bold text-[#003527] uppercase tracking-wider block">
+                      Billing Period
+                    </span>
+                    <span className="text-lg font-black text-[#003527] block mt-1 capitalize">
+                      {currentSubscription?.billingPeriod || 'Monthly'}
+                    </span>
+                  </div>
+
+                  <div className="p-4 bg-[#FFF1E7] rounded-2xl border border-[#ffe088]">
+                    <span className="text-[10px] font-bold text-[#735c00] uppercase tracking-wider block">
+                      Payment Status
+                    </span>
+                    <span className="text-lg font-black text-[#735c00] block mt-1 capitalize">
+                      {currentSubscription?.paymentStatus || 'Active'} ✓
+                    </span>
+                  </div>
+                </div>
+
+                {currentSubscription && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-bold text-[#1a1c1c] uppercase tracking-wider mb-2">
+                        Auto-Renewal
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          defaultChecked={currentSubscription.autoRenew}
+                          className="w-4 h-4 cursor-pointer"
+                        />
+                        <span className="text-xs text-[#665d55]">
+                          Automatically renew on {new Date(currentSubscription.renewalDate).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="px-6 py-2.5 rounded-full bg-[#003527] text-white font-bold text-xs hover:bg-[#064e3b] transition-colors cursor-pointer"
+                    >
+                      Update Billing Settings
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Plan Comparison */}
+              <div className="space-y-4 pt-4 border-t border-[#f4f3f2]">
+                <h3 className="font-bold text-sm text-[#1a1c1c]">Compare Plans</h3>
+                <p className="text-xs text-[#665d55]">
+                  {currentPlan === 'free' && 'Upgrade to Pro to unlock priority ranking, unlimited galleries, and customer reviews.'}
+                  {currentPlan === 'pro' && 'Upgrade to Featured for homepage listing, top search results, and priority support.'}
+                  {currentPlan === 'featured' && 'You have our highest tier plan with maximum visibility and priority support.'}
+                </p>
+                <div className="flex gap-2">
+                  <Link
+                    href="/become-a-seller"
+                    className="px-4 py-2 rounded-full bg-[#f4f3f2] text-[#003527] font-bold text-xs hover:bg-[#e3e2e1] transition-colors cursor-pointer border border-[#e3e2e1]"
+                  >
+                    View All Plans
+                  </Link>
+                  {currentPlan !== 'featured' && (
+                    <button
+                      type="button"
+                      onClick={() => alert('Upgrade flow will be integrated with payment gateway')}
+                      className="px-4 py-2 rounded-full bg-[#003527] text-white font-bold text-xs hover:bg-[#064e3b] transition-colors cursor-pointer"
+                    >
+                      Upgrade Now
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 9: EARNINGS & PAYOUTS */}
           {activeTab === 'earnings' && (
             <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#e3e2e1] shadow-xs space-y-6">
               <h2 className="text-lg font-black text-[#1a1c1c] font-['Plus_Jakarta_Sans']">

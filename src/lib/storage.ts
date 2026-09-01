@@ -14,6 +14,8 @@ import {
   CommissionSettings,
   BlogPost,
   ServiceItem,
+  PricingPlan,
+  SellerSubscription,
 } from '../types';
 import {
   SEED_USERS,
@@ -45,6 +47,8 @@ const STORAGE_KEYS = {
   NOTIFICATIONS: 'hb_notifications_v1',
   FAVORITES: 'hb_favorites_v1',
   COMMISSIONS: 'hb_commissions_v1',
+  PRICING_PLANS: 'hb_pricing_plans_v1',
+  SUBSCRIPTIONS: 'hb_subscriptions_v1',
   ACTIVE_USER_ID: 'hb_active_user_id_v1',
 };
 
@@ -634,6 +638,185 @@ From single mothers running catering setups to university students selling handm
   // Commission & Admin Stats
   getCommissionSettings: (): CommissionSettings => safeGetItem(STORAGE_KEYS.COMMISSIONS, SEED_COMMISSION_SETTINGS),
   saveCommissionSettings: (settings: CommissionSettings): void => safeSetItem(STORAGE_KEYS.COMMISSIONS, settings),
+
+  // Pricing Plans
+  getPricingPlans: (): PricingPlan[] => {
+    const plans = safeGetItem<PricingPlan[]>(STORAGE_KEYS.PRICING_PLANS, null);
+    if (plans) return plans;
+
+    // Initialize with default plans if none exist
+    const defaultPlans: PricingPlan[] = [
+      {
+        id: 'plan-free',
+        name: 'Free Plan',
+        description: 'Best for new businesses',
+        slug: 'free',
+        priceMonthly: 0,
+        priceYearly: 0,
+        icon: '🟢',
+        cta: 'Start Free',
+        highlighted: false,
+        active: true,
+        features: [
+          'Basic Business Profile',
+          'Business Description',
+          'Contact Information',
+          'WhatsApp Button',
+          'Google Maps Location',
+          'Opening Hours',
+          'Up to 10 Gallery Images',
+          'List Services',
+          'Receive Booking Requests',
+          'Receive Customer Requests',
+          'Basic Search Visibility',
+          'Basic Dashboard',
+          'Basic Analytics',
+        ],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: 'plan-pro',
+        name: 'Pro Plan',
+        description: 'Best for growing businesses',
+        slug: 'pro',
+        priceMonthly: 2999,
+        priceYearly: 29990,
+        icon: '⚡',
+        cta: 'Upgrade to Pro',
+        highlighted: true,
+        badge: 'Most Popular',
+        active: true,
+        features: [
+          'Everything in Free, plus:',
+          'Priority Search Ranking',
+          'Unlimited Gallery Images',
+          'Unlimited Services',
+          'Customer Reviews Display',
+          'Advanced Booking Management',
+          'Quote Management',
+          'Advanced Analytics',
+          'Social Media Links',
+          'Featured Profile Badge',
+          'Business Performance Insights',
+          'Promotional Campaign Access',
+        ],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: 'plan-featured',
+        name: 'Featured Plan',
+        description: 'Maximum Visibility & Growth',
+        slug: 'featured',
+        priceMonthly: 5999,
+        priceYearly: 59990,
+        icon: '👑',
+        cta: 'Become Featured',
+        highlighted: false,
+        active: true,
+        features: [
+          'Everything in Pro, plus:',
+          'Homepage Featured Listing',
+          'Top Search Results Placement',
+          'Category Priority Placement',
+          'Premium Featured Badge',
+          'Higher Search Visibility',
+          'Seasonal Promotions',
+          'Homepage Banner Placement',
+          'Priority Customer Leads',
+          'Premium Analytics Dashboard',
+          'Priority Support (24/7)',
+        ],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ];
+
+    safeSetItem(STORAGE_KEYS.PRICING_PLANS, defaultPlans);
+    return defaultPlans;
+  },
+
+  getPricingPlanBySlug: (slug: string): PricingPlan | undefined =>
+    Storage.getPricingPlans().find((p) => p.slug === slug),
+
+  getPricingPlanById: (id: string): PricingPlan | undefined =>
+    Storage.getPricingPlans().find((p) => p.id === id),
+
+  updatePricingPlan: (id: string, updates: Partial<PricingPlan>): void => {
+    const plans = Storage.getPricingPlans();
+    const idx = plans.findIndex((p) => p.id === id);
+    if (idx >= 0) {
+      plans[idx] = { ...plans[idx], ...updates, updatedAt: new Date().toISOString() };
+      safeSetItem(STORAGE_KEYS.PRICING_PLANS, plans);
+    }
+  },
+
+  // Seller Subscriptions
+  getSubscriptions: (): SellerSubscription[] => safeGetItem(STORAGE_KEYS.SUBSCRIPTIONS, []),
+
+  getSubscriptionById: (id: string): SellerSubscription | undefined =>
+    Storage.getSubscriptions().find((s) => s.id === id),
+
+  getSubscriptionByVendorId: (vendorId: string): SellerSubscription | undefined =>
+    Storage.getSubscriptions().find((s) => s.vendorId === vendorId),
+
+  createSubscription: (subscription: SellerSubscription): void => {
+    const subs = Storage.getSubscriptions();
+    subs.push(subscription);
+    safeSetItem(STORAGE_KEYS.SUBSCRIPTIONS, subs);
+
+    // Update vendor with current plan
+    const vendor = Storage.getVendorById(subscription.vendorId);
+    if (vendor) {
+      vendor.currentPlan = subscription.plan;
+      vendor.subscriptionId = subscription.id;
+      Storage.saveVendor(vendor);
+    }
+  },
+
+  updateSubscription: (id: string, updates: Partial<SellerSubscription>): void => {
+    const subs = Storage.getSubscriptions();
+    const idx = subs.findIndex((s) => s.id === id);
+    if (idx >= 0) {
+      subs[idx] = { ...subs[idx], ...updates, updatedAt: new Date().toISOString() };
+      safeSetItem(STORAGE_KEYS.SUBSCRIPTIONS, subs);
+    }
+  },
+
+  upgradeVendorPlan: (vendorId: string, newPlan: string): void => {
+    const existingSub = Storage.getSubscriptionByVendorId(vendorId);
+    const newPlanData = Storage.getPricingPlanBySlug(newPlan);
+
+    if (!newPlanData) return;
+
+    if (existingSub) {
+      Storage.updateSubscription(existingSub.id, {
+        plan: newPlan as any,
+        planId: newPlanData.id,
+        status: 'ACTIVE',
+        renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      });
+    } else {
+      const newSub: SellerSubscription = {
+        id: `sub-${Date.now()}`,
+        vendorId,
+        planId: newPlanData.id,
+        plan: newPlan as any,
+        status: 'ACTIVE',
+        billingPeriod: 'monthly',
+        priceAtPurchase: newPlanData.priceMonthly,
+        startDate: new Date().toISOString(),
+        renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        paymentMethod: 'MANUAL',
+        paymentStatus: 'PAID',
+        autoRenew: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      Storage.createSubscription(newSub);
+    }
+  },
 
   resetToDemoDefaults: () => {
     if (typeof window !== 'undefined') {

@@ -16,7 +16,7 @@ export function CategoriesPage() {
           All Service Categories
         </h1>
         <p className="text-xs sm:text-sm text-[#665d55]">
-          Explore trusted home chefs, artisanal bakers, bespoke tailors, organic mehndi artists, and academic tutors across Pakistan.
+          Explore trusted home chefs, artisanal bakers, bespoke tailors, organic mehndi artists, and academic tutors across Pakistan and Australia.
         </p>
       </div>
 

@@ -112,7 +112,7 @@ export function HowItWorksPage() {
             </div>
             <h3 className="font-bold text-base text-[#1a1c1c]">Keep 95% Earnings</h3>
             <p className="text-xs text-[#404944] leading-relaxed">
-              Enjoy the lowest platform fee in Pakistan (5%). Payouts are transferred weekly to your JazzCash, Easypaisa, or Pakistani Bank Account.
+              Enjoy the lowest platform fee (5%) in Pakistan and Australia. Payouts are transferred weekly to your JazzCash, Easypaisa, Pakistani Bank Account, or Australian Bank Account.
             </p>
           </div>
         </div>

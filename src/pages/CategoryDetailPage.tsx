@@ -31,7 +31,7 @@ export function CategoryDetailPage() {
         <div className="relative z-10 max-w-2xl space-y-3">
           <div className="inline-flex items-center gap-2 bg-[#b0f0d6]/20 px-3 py-1 rounded-full text-xs font-semibold text-[#b0f0d6]">
             <Sparkles className="w-3.5 h-3.5 text-[#ffe088]" />
-            <span>{vendors.length} Verified Creators in Pakistan</span>
+            <span>{vendors.length} Verified Creators in Pakistan & Australia</span>
           </div>
 
           <h1 className="text-2xl sm:text-4xl font-black font-['Plus_Jakarta_Sans']">

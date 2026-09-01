@@ -3,6 +3,7 @@ import { Link, useRouter } from '../lib/navigation';
 import { Storage, useStorageSubscription } from '../lib/storage';
 import { VendorCard } from '../components/marketplace/VendorCard';
 import { CategoryCard } from '../components/marketplace/CategoryCard';
+import { PricingCards } from '../components/marketplace/PricingCards';
 import {
   Search,
   MapPin,
@@ -58,7 +59,7 @@ export function HomePage() {
           <div className="lg:col-span-7 space-y-6">
             <div className="inline-flex items-center gap-2 bg-[#b0f0d6]/15 border border-[#95d3ba]/30 px-3.5 py-1.5 rounded-full text-xs font-semibold text-[#b0f0d6]">
               <Sparkles className="w-3.5 h-3.5 text-[#ffe088]" />
-              <span>SUPPORT LOCAL • SHOP LOCAL PAKISTAN</span>
+              <span>SUPPORT LOCAL • SHOP LOCAL PAKISTAN & AUSTRALIA</span>
             </div>
 
             <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black font-['Plus_Jakarta_Sans'] tracking-tight leading-[1.1]">
@@ -70,7 +71,7 @@ export function HomePage() {
             </h1>
 
             <p className="text-emerald-100/90 text-sm sm:text-base max-w-xl leading-relaxed">
-              Order artisanal celebration cakes, authentic ghar ka khana, bridal organic mehndi, bespoke tailoring, and home tutoring from trusted Pakistani micro-entrepreneurs.
+              Order artisanal celebration cakes, authentic ghar ka khana, bridal organic mehndi, bespoke tailoring, and home tutoring from trusted micro-entrepreneurs in Pakistan and Australia.
             </p>
 
             {/* Main Search Bar Form */}
@@ -313,6 +314,19 @@ export function HomePage() {
             </div>
           </div>
         </div>
+      </section>
+
+      {/* SELLER PRICING PLANS SECTION */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+        <div className="text-center space-y-3">
+          <h2 className="text-2xl sm:text-4xl font-black text-[#1a1c1c] font-['Plus_Jakarta_Sans']">
+            Seller Plans to Fit Your Business
+          </h2>
+          <p className="text-xs sm:text-sm text-[#665d55] max-w-2xl mx-auto leading-relaxed">
+            Choose the right plan for your home business. Start free, upgrade anytime. No contracts, no hidden fees.
+          </p>
+        </div>
+        <PricingCards onSelectPlan={() => { }} showComparison={false} showToggle={false} />
       </section>
 
       {/* BECOME A SELLER PROMO */}

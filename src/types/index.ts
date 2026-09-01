@@ -120,6 +120,8 @@ export interface VendorProfile {
     lat: number;
     lng: number;
   };
+  currentPlan?: SubscriptionPlan; // Current subscription plan
+  subscriptionId?: string; // Reference to SellerSubscription
   createdAt: string;
 }
 
@@ -316,3 +318,39 @@ export interface BlogPost {
 }
 
 export type Vendor = VendorProfile;
+
+export type SubscriptionPlan = 'free' | 'pro' | 'featured';
+
+export interface PricingPlan {
+  id: string;
+  name: string;
+  description: string;
+  slug: SubscriptionPlan;
+  priceMonthly: number;
+  priceYearly: number;
+  features: string[];
+  icon: string;
+  cta: string;
+  highlighted?: boolean;
+  badge?: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SellerSubscription {
+  id: string;
+  vendorId: string;
+  planId: string;
+  plan: SubscriptionPlan;
+  status: 'ACTIVE' | 'INACTIVE' | 'CANCELLED';
+  billingPeriod: 'monthly' | 'yearly';
+  priceAtPurchase: number;
+  startDate: string;
+  renewalDate: string;
+  paymentMethod: 'JAZZ_CASH' | 'EASYPAISA' | 'CARD' | 'BANK_TRANSFER' | 'MANUAL';
+  paymentStatus: PaymentStatus;
+  autoRenew: boolean;
+  createdAt: string;
+  updatedAt: string;
+}

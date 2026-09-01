@@ -25,7 +25,7 @@ export function ExplorePage() {
           Explore Handpicked Home Creators
         </h1>
         <p className="text-xs sm:text-sm text-[#665d55]">
-          Discover top-rated artisanal talents, verified micro-businesses, and customer favorites across Pakistan.
+          Discover top-rated artisanal talents, verified micro-businesses, and customer favorites across Pakistan and Australia.
         </p>
       </div>
 
@@ -69,7 +69,7 @@ export function ExplorePage() {
       <div className="bg-[#FFF1E7] rounded-3xl p-6 sm:p-8 border border-[#ffe088] space-y-4">
         <h2 className="text-lg font-black text-[#735c00] font-['Plus_Jakarta_Sans'] flex items-center gap-2">
           <MapPin className="w-4 h-4 text-[#cca72f]" />
-          <span>Explore by Pakistani City</span>
+          <span>Explore by City</span>
         </h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {cities.map((city) => (

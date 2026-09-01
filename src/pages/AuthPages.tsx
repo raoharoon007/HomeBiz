@@ -174,7 +174,7 @@ export function RegisterPage() {
       <div className="bg-white rounded-3xl p-8 border border-[#e3e2e1] shadow-md space-y-6">
         <div className="text-center space-y-1">
           <span className="text-xs font-bold text-[#cca72f] uppercase tracking-wider">
-            Join Pakistan's Home Community
+            Join Our Home Community - Pakistan & Australia
           </span>
           <h1 className="text-2xl font-black text-[#1a1c1c] font-['Plus_Jakarta_Sans']">
             Create an Account

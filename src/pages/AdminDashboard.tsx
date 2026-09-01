@@ -86,7 +86,7 @@ export function AdminDashboard() {
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-5 h-5 text-[#ffe088]" />
             <h1 className="text-xl sm:text-2xl font-black font-['Plus_Jakarta_Sans']">
-              HomeBiz Pakistan Super Admin Control
+              HomeBiz Super Admin Control - Pakistan & Australia
             </h1>
           </div>
           <p className="text-xs text-stone-400">
@@ -107,11 +107,10 @@ export function AdminDashboard() {
               <Link
                 key={tab.id}
                 href={tab.path}
-                className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-bold transition-colors ${
-                  isSelected
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-bold transition-colors ${isSelected
                     ? 'bg-[#003527] text-white shadow-xs'
                     : 'text-[#404944] hover:bg-[#faf9f8]'
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-3">
                   <Icon className={`w-4 h-4 ${isSelected ? 'text-[#ffe088]' : 'text-[#665d55]'}`} />
@@ -119,9 +118,8 @@ export function AdminDashboard() {
                 </div>
                 {tab.badge !== undefined && tab.badge > 0 && (
                   <span
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
-                      isSelected ? 'bg-white text-[#003527]' : 'bg-[#f4f3f2] text-[#404944]'
-                    }`}
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-black ${isSelected ? 'bg-white text-[#003527]' : 'bg-[#f4f3f2] text-[#404944]'
+                      }`}
                   >
                     {tab.badge}
                   </span>
@@ -182,7 +180,7 @@ export function AdminDashboard() {
 
               {/* Vendors Overview Table */}
               <div className="bg-white rounded-3xl p-6 border border-[#e3e2e1] shadow-xs space-y-4">
-                <h3 className="font-bold text-sm text-[#1a1c1c]">Verified Pakistani Home Businesses</h3>
+                <h3 className="font-bold text-sm text-[#1a1c1c]">Verified Home Businesses - Pakistan & Australia</h3>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-left">
                     <thead className="bg-[#faf9f8] text-[#665d55] uppercase tracking-wider text-[10px]">
@@ -209,11 +207,10 @@ export function AdminDashboard() {
                           <td className="p-3 font-bold text-[#cca72f]">★ {v.rating.toFixed(1)}</td>
                           <td className="p-3">
                             <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                v.verificationStatus === 'VERIFIED'
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${v.verificationStatus === 'VERIFIED'
                                   ? 'bg-[#b0f0d6]/40 text-[#003527]'
                                   : 'bg-[#ffe088] text-[#735c00]'
-                              }`}
+                                }`}
                             >
                               {v.verificationStatus}
                             </span>
@@ -258,11 +255,10 @@ export function AdminDashboard() {
                         <div className="flex items-center gap-2">
                           <h3 className="font-bold text-sm text-[#1a1c1c]">{v.businessName}</h3>
                           <span
-                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                              v.verificationStatus === 'VERIFIED'
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${v.verificationStatus === 'VERIFIED'
                                 ? 'bg-[#b0f0d6]/40 text-[#003527]'
                                 : 'bg-[#ffe088] text-[#735c00]'
-                            }`}
+                              }`}
                           >
                             {v.verificationStatus}
                           </span>
@@ -282,11 +278,10 @@ export function AdminDashboard() {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => handleToggleFeatured(v.id)}
-                        className={`px-3 py-1.5 rounded-full border text-xs font-bold transition-colors ${
-                          v.isFeatured
+                        className={`px-3 py-1.5 rounded-full border text-xs font-bold transition-colors ${v.isFeatured
                             ? 'bg-[#ffe088] text-[#735c00] border-[#ffe088]'
                             : 'bg-white text-stone-600 border-stone-300'
-                        }`}
+                          }`}
                       >
                         {v.isFeatured ? '★ Featured' : 'Feature'}
                       </button>
@@ -347,7 +342,7 @@ export function AdminDashboard() {
           {/* TAB 4: ACTIVE CITIES */}
           {activeTab === 'cities' && (
             <div className="space-y-4">
-              <h2 className="text-base font-bold text-[#1a1c1c]">Active Pakistani Metros ({cities.length})</h2>
+              <h2 className="text-base font-bold text-[#1a1c1c]">Active Cities ({cities.length})</h2>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {cities.map((city) => (
                   <div
