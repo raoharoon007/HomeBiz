@@ -16,6 +16,7 @@ import {
   ServiceItem,
   PricingPlan,
   SellerSubscription,
+  SubscriptionPlan,
 } from '../types';
 import {
   SEED_USERS,
@@ -151,6 +152,15 @@ const migrateUsers = (users: User[]): User[] =>
     password: user.password ?? getDefaultPasswordForEmail(user.email),
   }));
 
+type UpgradeVendorPlanOptions = {
+  billingPeriod?: SellerSubscription['billingPeriod'];
+  paymentMethod?: SellerSubscription['paymentMethod'];
+  paymentStatus?: SellerSubscription['paymentStatus'];
+  priceAtPurchase?: number;
+  transactionId?: string;
+  providerReference?: string;
+};
+
 export const Storage = {
   // Users
   getUsers: (): User[] => migrateUsers(safeGetItem(STORAGE_KEYS.USERS, SEED_USERS)),
@@ -182,7 +192,7 @@ export const Storage = {
 
   // Categories & Cities
   getCategories: (): Category[] => safeGetItem(STORAGE_KEYS.CATEGORIES, SEED_CATEGORIES),
-  getCities: (): City[] => safeGetItem(STORAGE_KEYS.CITIES, SEED_CITIES),
+  getCities: (): City[] => mergeSeedData(safeGetItem<City[] | null>(STORAGE_KEYS.CITIES, null), SEED_CITIES),
 
   // Vendors
   getVendors: (): VendorProfile[] => safeGetItem(STORAGE_KEYS.VENDORS, SEED_VENDORS),
@@ -784,38 +794,86 @@ From single mothers running catering setups to university students selling handm
     }
   },
 
-  upgradeVendorPlan: (vendorId: string, newPlan: string): void => {
+  upgradeVendorPlan: (
+    vendorId: string,
+    newPlan: SubscriptionPlan,
+    options: UpgradeVendorPlanOptions = {}
+  ): SellerSubscription | null => {
     const existingSub = Storage.getSubscriptionByVendorId(vendorId);
     const newPlanData = Storage.getPricingPlanBySlug(newPlan);
 
-    if (!newPlanData) return;
+    if (!newPlanData) return null;
+
+    const now = new Date();
+    const billingPeriod = options.billingPeriod || 'monthly';
+    const renewalDate = new Date(now);
+    renewalDate.setMonth(renewalDate.getMonth() + (billingPeriod === 'yearly' ? 12 : 1));
+    const priceAtPurchase =
+      options.priceAtPurchase ??
+      (billingPeriod === 'yearly' ? newPlanData.priceYearly : newPlanData.priceMonthly);
+    const paymentStatus = options.paymentStatus || 'PAID';
+    const paymentMethod = options.paymentMethod || (priceAtPurchase === 0 ? 'MANUAL' : 'CARD');
+
+    let savedSubscription: SellerSubscription;
 
     if (existingSub) {
-      Storage.updateSubscription(existingSub.id, {
-        plan: newPlan as any,
+      savedSubscription = {
+        ...existingSub,
+        plan: newPlan,
         planId: newPlanData.id,
         status: 'ACTIVE',
-        renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      });
+        billingPeriod,
+        priceAtPurchase,
+        renewalDate: renewalDate.toISOString(),
+        paymentMethod,
+        paymentStatus,
+        transactionId: options.transactionId || existingSub.transactionId,
+        providerReference: options.providerReference || existingSub.providerReference,
+        lastPaymentAt: paymentStatus === 'PAID' ? now.toISOString() : existingSub.lastPaymentAt,
+        updatedAt: now.toISOString(),
+      };
+      Storage.updateSubscription(existingSub.id, savedSubscription);
     } else {
-      const newSub: SellerSubscription = {
+      savedSubscription = {
         id: `sub-${Date.now()}`,
         vendorId,
         planId: newPlanData.id,
-        plan: newPlan as any,
+        plan: newPlan,
         status: 'ACTIVE',
-        billingPeriod: 'monthly',
-        priceAtPurchase: newPlanData.priceMonthly,
-        startDate: new Date().toISOString(),
-        renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        paymentMethod: 'MANUAL',
-        paymentStatus: 'PAID',
+        billingPeriod,
+        priceAtPurchase,
+        startDate: now.toISOString(),
+        renewalDate: renewalDate.toISOString(),
+        paymentMethod,
+        paymentStatus,
+        transactionId: options.transactionId,
+        providerReference: options.providerReference,
+        lastPaymentAt: paymentStatus === 'PAID' ? now.toISOString() : undefined,
         autoRenew: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
       };
-      Storage.createSubscription(newSub);
+      Storage.createSubscription(savedSubscription);
     }
+
+    const vendor = Storage.getVendorById(vendorId);
+    if (vendor) {
+      vendor.currentPlan = newPlan;
+      vendor.subscriptionId = savedSubscription.id;
+      Storage.saveVendor(vendor);
+      Storage.createNotification({
+        id: `notif-${Date.now()}-${savedSubscription.id}`,
+        userId: vendor.userId,
+        title: 'Subscription Updated',
+        message: `${newPlanData.name} is now active. Payment status: ${paymentStatus}.`,
+        type: 'SYSTEM_ANNOUNCEMENT',
+        link: '/seller/dashboard/plan',
+        read: false,
+        createdAt: now.toISOString(),
+      });
+    }
+
+    return savedSubscription;
   },
 
   resetToDemoDefaults: () => {

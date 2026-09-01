@@ -350,6 +350,9 @@ export interface SellerSubscription {
   renewalDate: string;
   paymentMethod: 'JAZZ_CASH' | 'EASYPAISA' | 'CARD' | 'BANK_TRANSFER' | 'MANUAL';
   paymentStatus: PaymentStatus;
+  transactionId?: string;
+  providerReference?: string;
+  lastPaymentAt?: string;
   autoRenew: boolean;
   createdAt: string;
   updatedAt: string;

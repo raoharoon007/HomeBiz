@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Check, X, Zap, Crown } from 'lucide-react';
 import { Storage } from '../../lib/storage';
 import { PricingPlan } from '../../types';
-import { useRouter } from '../../lib/navigation';
+import { useRouter, useSearchParams } from '../../lib/navigation';
 import { useAuth } from '../../lib/authContext';
+import { PaymentGateway, PaymentResult } from './PaymentGateway';
 
 interface PricingCardsProps {
     onSelectPlan?: (planId: string) => void;
@@ -21,7 +22,15 @@ export function PricingCards({
     const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
     const [plans, setPlans] = useState<PricingPlan[]>([]);
     const [loadingPlanId, setLoadingPlanId] = useState<string | null>(null);
+    const [checkoutPlan, setCheckoutPlan] = useState<{
+        id: string;
+        name: string;
+        slug: PricingPlan['slug'];
+        amount: number;
+    } | null>(null);
+    const [autoOpenedPlanSlug, setAutoOpenedPlanSlug] = useState<string | null>(null);
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { user } = useAuth();
 
     useEffect(() => {
@@ -63,11 +72,49 @@ export function PricingCards({
         return billingPeriod === 'monthly' ? plan.priceMonthly : plan.priceYearly;
     };
 
-    const handleSelectPlan = async (planId: string, planSlug: string) => {
+    useEffect(() => {
+        const planSlug = searchParams.get('plan') as PricingPlan['slug'] | null;
+        if (!planSlug || autoOpenedPlanSlug === planSlug || !user || user.role !== 'SELLER') return;
+
+        const selectedPlan = plans.find((plan) => plan.slug === planSlug);
+        if (!selectedPlan) return;
+
+        const amount = currentPrice(selectedPlan);
+        if (amount <= 0) return;
+
+        setCheckoutPlan({
+            id: selectedPlan.id,
+            name: selectedPlan.name,
+            slug: selectedPlan.slug,
+            amount,
+        });
+        setAutoOpenedPlanSlug(planSlug);
+    }, [autoOpenedPlanSlug, billingPeriod, plans, searchParams, user]);
+
+    const handleSelectPlan = async (planId: string, planSlug: PricingPlan['slug']) => {
         if (!enableInteraction) return;
 
-        if (!user || user.role !== 'SELLER') {
-            router.push('/auth');
+        const selectedPlan = plans.find((plan) => plan.id === planId);
+        if (!selectedPlan) return;
+
+        if (!user) {
+            router.push(`/auth/login?redirect=${encodeURIComponent(`/pricing?plan=${planSlug}`)}`);
+            return;
+        }
+
+        if (user.role !== 'SELLER' || !user.sellerProfileId) {
+            router.push('/become-a-seller');
+            return;
+        }
+
+        const amount = currentPrice(selectedPlan);
+        if (amount > 0) {
+            setCheckoutPlan({
+                id: selectedPlan.id,
+                name: selectedPlan.name,
+                slug: selectedPlan.slug,
+                amount,
+            });
             return;
         }
 
@@ -75,7 +122,12 @@ export function PricingCards({
 
         setTimeout(() => {
             try {
-                Storage.upgradeVendorPlan(user.sellerProfileId!, planSlug);
+                Storage.upgradeVendorPlan(user.sellerProfileId, planSlug, {
+                    billingPeriod,
+                    paymentMethod: 'MANUAL',
+                    paymentStatus: 'PAID',
+                    priceAtPurchase: 0,
+                });
 
                 if (onSelectPlan) {
                     onSelectPlan(planId);
@@ -88,6 +140,33 @@ export function PricingCards({
                 setLoadingPlanId(null);
             }
         }, 1000);
+    };
+
+    const handlePaymentSuccess = (payment: PaymentResult) => {
+        if (!checkoutPlan || !user?.sellerProfileId) return;
+
+        setLoadingPlanId(checkoutPlan.id);
+        try {
+            Storage.upgradeVendorPlan(user.sellerProfileId, checkoutPlan.slug, {
+                billingPeriod,
+                paymentMethod: payment.paymentMethod,
+                paymentStatus: 'PAID',
+                priceAtPurchase: checkoutPlan.amount,
+                transactionId: payment.transactionId,
+                providerReference: payment.providerReference,
+            });
+
+            if (onSelectPlan) {
+                onSelectPlan(checkoutPlan.id);
+            }
+
+            setCheckoutPlan(null);
+            router.push('/seller/dashboard/plan');
+        } catch (error) {
+            console.error('Error completing plan upgrade:', error);
+        } finally {
+            setLoadingPlanId(null);
+        }
     };
 
     return (
@@ -325,6 +404,17 @@ export function PricingCards({
                     ))}
                 </div>
             </div>
+
+            {checkoutPlan && (
+                <PaymentGateway
+                    planName={checkoutPlan.name}
+                    amount={checkoutPlan.amount}
+                    planSlug={checkoutPlan.slug}
+                    billingPeriod={billingPeriod}
+                    onSuccess={handlePaymentSuccess}
+                    onCancel={() => setCheckoutPlan(null)}
+                />
+            )}
         </div>
     );
 }

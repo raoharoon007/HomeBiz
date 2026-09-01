@@ -723,11 +723,7 @@ export function SellerDashboard() {
                   </div>
                   {currentPlan !== 'featured' && (
                     <Link
-                      href="/seller/dashboard/plan"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        alert('Upgrade feature coming soon! For now, contact support.');
-                      }}
+                      href="/pricing"
                       className="px-4 py-2 rounded-full bg-[#003527] text-white font-bold text-xs hover:bg-[#064e3b] transition-colors cursor-pointer"
                     >
                       Upgrade Plan
@@ -821,19 +817,18 @@ export function SellerDashboard() {
                 </p>
                 <div className="flex gap-2">
                   <Link
-                    href="/become-a-seller"
+                    href="/pricing"
                     className="px-4 py-2 rounded-full bg-[#f4f3f2] text-[#003527] font-bold text-xs hover:bg-[#e3e2e1] transition-colors cursor-pointer border border-[#e3e2e1]"
                   >
                     View All Plans
                   </Link>
                   {currentPlan !== 'featured' && (
-                    <button
-                      type="button"
-                      onClick={() => alert('Upgrade flow will be integrated with payment gateway')}
+                    <Link
+                      href="/pricing"
                       className="px-4 py-2 rounded-full bg-[#003527] text-white font-bold text-xs hover:bg-[#064e3b] transition-colors cursor-pointer"
                     >
                       Upgrade Now
-                    </button>
+                    </Link>
                   )}
                 </div>
               </div>

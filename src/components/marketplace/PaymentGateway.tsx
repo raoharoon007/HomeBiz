@@ -1,11 +1,24 @@
 import React, { useState } from 'react';
-import { Check, X, Lock, CreditCard } from 'lucide-react';
+import { X, Lock } from 'lucide-react';
+import { SellerSubscription } from '../../types';
+
+type CheckoutPaymentMethod = 'jazz_cash' | 'easypaisa' | 'card';
+
+export interface PaymentResult {
+    paymentMethod: SellerSubscription['paymentMethod'];
+    transactionId: string;
+    providerReference: string;
+    amount: number;
+    planSlug: string;
+    paidAt: string;
+}
 
 export interface PaymentGatewayProps {
     planName: string;
     amount: number;
     planSlug: string;
-    onSuccess: () => void;
+    billingPeriod?: 'monthly' | 'yearly';
+    onSuccess: (result: PaymentResult) => void;
     onCancel: () => void;
 }
 
@@ -13,10 +26,11 @@ export function PaymentGateway({
     planName,
     amount,
     planSlug,
+    billingPeriod = 'monthly',
     onSuccess,
     onCancel,
 }: PaymentGatewayProps) {
-    const [paymentMethod, setPaymentMethod] = useState<'jazz_cash' | 'easypaisa' | 'card' | null>(null);
+    const [paymentMethod, setPaymentMethod] = useState<CheckoutPaymentMethod | null>(null);
     const [loading, setLoading] = useState(false);
     const [step, setStep] = useState<'method' | 'details' | 'confirmation'>('method');
 
@@ -34,8 +48,33 @@ export function PaymentGateway({
     const [expiryDate, setExpiryDate] = useState('');
     const [cvv, setCvv] = useState('');
 
+    const mapPaymentMethod = (method: CheckoutPaymentMethod): SellerSubscription['paymentMethod'] => {
+        if (method === 'jazz_cash') return 'JAZZ_CASH';
+        if (method === 'easypaisa') return 'EASYPAISA';
+        return 'CARD';
+    };
+
+    const getProviderReference = (method: CheckoutPaymentMethod) => {
+        if (method === 'jazz_cash') return jazzPin.trim();
+        if (method === 'easypaisa') return easypaisaPin.trim();
+        const cardLastFour = cardNumber.replace(/\D/g, '').slice(-4);
+        return `CARD-${cardLastFour || '0000'}-${Date.now()}`;
+    };
+
     const handlePaymentSubmit = async () => {
+        if (!paymentMethod) return;
+
         setLoading(true);
+        const paidAt = new Date().toISOString();
+        const providerReference = getProviderReference(paymentMethod);
+        const result: PaymentResult = {
+            paymentMethod: mapPaymentMethod(paymentMethod),
+            transactionId: `pay-${Date.now()}`,
+            providerReference,
+            amount,
+            planSlug,
+            paidAt,
+        };
 
         // Simulate payment processing
         setTimeout(() => {
@@ -44,7 +83,7 @@ export function PaymentGateway({
 
             // After showing confirmation, proceed
             setTimeout(() => {
-                onSuccess();
+                onSuccess(result);
             }, 2000);
         }, 2000);
     };
@@ -95,7 +134,9 @@ export function PaymentGateway({
                         <div className="bg-[#faf9f8] p-4 rounded-2xl border border-[#e3e2e1] mb-6">
                             <div className="flex items-center justify-between mb-3 pb-3 border-b border-[#e3e2e1]">
                                 <span className="text-xs text-[#665d55]">Plan: {planName}</span>
-                                <span className="text-sm font-bold text-[#1a1c1c]">1 Month</span>
+                                <span className="text-sm font-bold text-[#1a1c1c]">
+                                    {billingPeriod === 'yearly' ? '1 Year' : '1 Month'}
+                                </span>
                             </div>
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-bold text-[#665d55] uppercase tracking-wider">Total Amount</span>
@@ -114,7 +155,7 @@ export function PaymentGateway({
                                     name="payment"
                                     value="jazz_cash"
                                     checked={paymentMethod === 'jazz_cash'}
-                                    onChange={(e) => setPaymentMethod(e.target.value as any)}
+                                    onChange={() => setPaymentMethod('jazz_cash')}
                                     className="mt-1 cursor-pointer"
                                 />
                                 <div className="flex-1">
@@ -133,7 +174,7 @@ export function PaymentGateway({
                                     name="payment"
                                     value="easypaisa"
                                     checked={paymentMethod === 'easypaisa'}
-                                    onChange={(e) => setPaymentMethod(e.target.value as any)}
+                                    onChange={() => setPaymentMethod('easypaisa')}
                                     className="mt-1 cursor-pointer"
                                 />
                                 <div className="flex-1">
@@ -152,7 +193,7 @@ export function PaymentGateway({
                                     name="payment"
                                     value="card"
                                     checked={paymentMethod === 'card'}
-                                    onChange={(e) => setPaymentMethod(e.target.value as any)}
+                                    onChange={() => setPaymentMethod('card')}
                                     className="mt-1 cursor-pointer"
                                 />
                                 <div className="flex-1">

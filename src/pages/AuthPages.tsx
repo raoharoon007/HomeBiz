@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import { useRouter, Link } from '../lib/navigation';
+import { useRouter, Link, useSearchParams } from '../lib/navigation';
 import { useAuth } from '../lib/authContext';
-import { Storage } from '../lib/storage';
+import { Storage, useStorageSubscription } from '../lib/storage';
 import { sendWelcomeAccountEmail, EmailLog } from '../lib/emailService';
 import { Sparkles, ArrowRight, ShieldCheck, UserCheck, Mail, CheckCircle } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 export function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -27,6 +28,12 @@ export function LoginPage() {
     const success = login(email.trim(), password);
     if (success) {
       confetti({ particleCount: 50, spread: 60 });
+      const redirect = searchParams.get('redirect');
+      if (redirect?.startsWith('/') && !redirect.startsWith('//')) {
+        router.push(redirect);
+        return;
+      }
+
       const active = Storage.getActiveUser();
       if (active?.role === 'SELLER') router.push('/seller/dashboard');
       else if (active?.role === 'ADMIN') router.push('/admin/dashboard');
@@ -114,6 +121,7 @@ export function LoginPage() {
 }
 
 export function RegisterPage() {
+  useStorageSubscription();
   const router = useRouter();
   const { register } = useAuth();
   const [name, setName] = useState('');
@@ -125,6 +133,7 @@ export function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [accountType, setAccountType] = useState<'CUSTOMER' | 'SELLER'>('CUSTOMER');
+  const cities = Storage.getCities();
 
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
@@ -266,12 +275,11 @@ export function RegisterPage() {
               onChange={(e) => setCity(e.target.value)}
               className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none font-medium"
             >
-              <option value="Lahore">Lahore</option>
-              <option value="Karachi">Karachi</option>
-              <option value="Islamabad">Islamabad</option>
-              <option value="Rawalpindi">Rawalpindi</option>
-              <option value="Faisalabad">Faisalabad</option>
-              <option value="Multan">Multan</option>
+              {cities.map((cityOption) => (
+                <option key={cityOption.id} value={cityOption.name}>
+                  {cityOption.name} ({cityOption.province})
+                </option>
+              ))}
             </select>
           </div>
 

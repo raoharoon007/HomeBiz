@@ -97,6 +97,9 @@ function AppContent() {
     if (pathname === '/auth/login') {
       return <LoginPage />;
     }
+    if (pathname === '/auth') {
+      return <LoginPage />;
+    }
     if (pathname === '/auth/register') {
       return <RegisterPage />;
     }
