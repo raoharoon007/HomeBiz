@@ -3,7 +3,7 @@ import { Link, useRouter } from '../lib/navigation';
 import { Storage, useStorageSubscription } from '../lib/storage';
 import { VendorCard } from '../components/marketplace/VendorCard';
 import { CategoryCard } from '../components/marketplace/CategoryCard';
-import { PricingCards } from '../components/marketplace/PricingCards';
+
 import {
   Search,
   MapPin,
@@ -314,19 +314,6 @@ export function HomePage() {
             </div>
           </div>
         </div>
-      </section>
-
-      {/* SELLER PRICING PLANS SECTION */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-        <div className="text-center space-y-3">
-          <h2 className="text-2xl sm:text-4xl font-black text-[#1a1c1c] font-['Plus_Jakarta_Sans']">
-            Seller Plans to Fit Your Business
-          </h2>
-          <p className="text-xs sm:text-sm text-[#665d55] max-w-2xl mx-auto leading-relaxed">
-            Choose the right plan for your home business. Start free, upgrade anytime. No contracts, no hidden fees.
-          </p>
-        </div>
-        <PricingCards onSelectPlan={() => { }} showComparison={false} showToggle={false} />
       </section>
 
       {/* BECOME A SELLER PROMO */}

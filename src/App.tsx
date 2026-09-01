@@ -24,6 +24,7 @@ import { LoginPage, RegisterPage, ForgotPasswordPage } from './pages/AuthPages';
 import { CustomerDashboard } from './pages/CustomerDashboard';
 import { SellerDashboard } from './pages/SellerDashboard';
 import { AdminDashboard } from './pages/AdminDashboard';
+import { PricingPage } from './pages/PricingPage';
 
 function AppContent() {
   const pathname = usePathname();
@@ -80,6 +81,9 @@ function AppContent() {
     }
     if (pathname === '/become-a-seller') {
       return <BecomeSellerPage />;
+    }
+    if (pathname === '/pricing') {
+      return <PricingPage />;
     }
     if (pathname === '/blog') {
       return <BlogPage />;
