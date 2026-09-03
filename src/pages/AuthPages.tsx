@@ -12,9 +12,10 @@ export function LoginPage() {
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) {
       setError('Please enter your email address');
@@ -25,23 +26,32 @@ export function LoginPage() {
       return;
     }
 
-    const success = login(email.trim(), password);
-    if (success) {
-      confetti({ particleCount: 50, spread: 60 });
-      const redirect = searchParams.get('redirect');
-      if (redirect?.startsWith('/') && !redirect.startsWith('//')) {
-        router.push(redirect);
+    setLoading(true);
+    setError('');
+
+    try {
+      const success = await login(email.trim(), password);
+      if (success) {
+        confetti({ particleCount: 50, spread: 60 });
+        const redirect = searchParams.get('redirect');
+        if (redirect?.startsWith('/') && !redirect.startsWith('//')) {
+          router.push(redirect);
+          return;
+        }
+
+        const active = Storage.getActiveUser();
+        if (active?.role === 'SELLER') router.push('/seller/dashboard');
+        else if (active?.role === 'ADMIN') router.push('/admin/dashboard');
+        else router.push('/customer/dashboard/bookings');
         return;
       }
 
-      const active = Storage.getActiveUser();
-      if (active?.role === 'SELLER') router.push('/seller/dashboard');
-      else if (active?.role === 'ADMIN') router.push('/admin/dashboard');
-      else router.push('/customer/dashboard/bookings');
-      return;
+      setError('Incorrect email or password. Please use your valid HomeBiz account credentials.');
+    } catch (err: any) {
+      setError(err?.message || 'Unable to sign in. Please try again.');
+    } finally {
+      setLoading(false);
     }
-
-    setError('Incorrect email or password. Please use your valid HomeBiz account credentials.');
   };
 
   return (
@@ -132,10 +142,11 @@ export function RegisterPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const [accountType, setAccountType] = useState<'CUSTOMER' | 'SELLER'>('CUSTOMER');
   const cities = Storage.getCities();
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (password.length < 6) {
@@ -155,8 +166,11 @@ export function RegisterPage() {
       return;
     }
 
+    setLoading(true);
+    setError('');
+
     try {
-      const createdUser = register(name.trim(), normalizedEmail, password, accountType, city, accountType === 'SELLER' ? businessName.trim() : undefined);
+      const createdUser = await register(name.trim(), normalizedEmail, password, accountType, city, accountType === 'SELLER' ? businessName.trim() : undefined);
 
       if (phone && createdUser) {
         createdUser.phone = phone;
@@ -175,6 +189,8 @@ export function RegisterPage() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create your account right now.');
+    } finally {
+      setLoading(false);
     }
   };
 

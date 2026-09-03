@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useRouter, useSearchParams } from '../lib/navigation';
 import { Storage, useStorageSubscription } from '../lib/storage';
 import { useAuth } from '../lib/authContext';
 import { CustomerRequest } from '../types';
-import { Sparkles, MapPin, Calendar, PlusCircle, CheckCircle, UploadCloud, Users, ArrowRight } from 'lucide-react';
+import { Sparkles, MapPin, Calendar, PlusCircle, CheckCircle, UploadCloud, Users, ArrowRight, Loader } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { uploadImageToStorage } from '../lib/supabaseStorage';
 
 export function RequestPage() {
   useStorageSubscription();
@@ -49,9 +50,9 @@ export function RequestPage() {
   const [guestCount, setGuestCount] = useState('30-40 people');
   const [deliveryMethod, setDeliveryMethod] = useState<'DELIVERY' | 'PICKUP' | 'AT_HOME'>('DELIVERY');
   const [description, setDescription] = useState('');
-  const [photos, setPhotos] = useState<string[]>([
-    'https://images.unsplash.com/photo-1535141192574-5d4897c13136?auto=format&fit=crop&w=600&q=80',
-  ]);
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const categories = Storage.getCategories();
@@ -266,27 +267,51 @@ export function RequestPage() {
           <label className="block text-xs font-bold text-[#1a1c1c] uppercase tracking-wider mb-2">
             Reference Photos & Inspiration
           </label>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center flex-wrap gap-3">
             {photos.map((p, idx) => (
-              <img
-                key={idx}
-                src={p}
-                alt="Ref"
-                className="w-16 h-16 rounded-xl object-cover border border-[#e3e2e1]"
-              />
+              <div key={idx} className="relative group">
+                <img
+                  src={p}
+                  alt="Ref"
+                  className="w-16 h-16 rounded-xl object-cover border border-[#e3e2e1]"
+                />
+                <button
+                  type="button"
+                  onClick={() => setPhotos(photos.filter((_, i) => i !== idx))}
+                  className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold hidden group-hover:flex items-center justify-center"
+                >✕</button>
+              </div>
             ))}
+            {/* Hidden real file input */}
+            <input
+              type="file"
+              accept="image/*"
+              ref={photoInputRef}
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setUploadingPhoto(true);
+                try {
+                  const url = await uploadImageToStorage(file, 'requests');
+                  setPhotos((prev) => [...prev, url]);
+                } catch (err) {
+                  console.warn('Photo upload error:', err);
+                } finally {
+                  setUploadingPhoto(false);
+                  if (photoInputRef.current) photoInputRef.current.value = '';
+                }
+              }}
+            />
             <button
               type="button"
-              onClick={() =>
-                setPhotos([
-                  ...photos,
-                  'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=600&q=80',
-                ])
-              }
-              className="w-16 h-16 rounded-xl border-2 border-dashed border-stone-300 hover:border-[#003527] flex flex-col items-center justify-center text-stone-500 hover:text-[#003527] transition-colors"
+              onClick={() => photoInputRef.current?.click()}
+              disabled={uploadingPhoto}
+              className="w-16 h-16 rounded-xl border-2 border-dashed border-stone-300 hover:border-[#003527] flex flex-col items-center justify-center text-stone-500 hover:text-[#003527] transition-colors disabled:opacity-60"
             >
-              <UploadCloud className="w-5 h-5" />
-              <span className="text-[9px] mt-0.5 font-bold">+ Add</span>
+              {uploadingPhoto
+                ? <Loader className="w-5 h-5 animate-spin" />
+                : <><UploadCloud className="w-5 h-5" /><span className="text-[9px] mt-0.5 font-bold">+ Add</span></>}
             </button>
           </div>
         </div>

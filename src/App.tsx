@@ -5,6 +5,7 @@ import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
 import { MobileBottomNav } from './components/layout/MobileBottomNav';
 import { RoleSwitcherBanner } from './components/layout/RoleSwitcherBanner';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 // Pages
 import { HomePage } from './pages/HomePage';
@@ -25,10 +26,42 @@ import { CustomerDashboard } from './pages/CustomerDashboard';
 import { SellerDashboard } from './pages/SellerDashboard';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { PricingPage } from './pages/PricingPage';
+import { SupabaseDb } from './lib/supabaseDb';
 
 function AppContent() {
   const pathname = usePathname();
   const { user } = useAuth();
+
+  // Sync live database data on app startup
+  useEffect(() => {
+    async function syncInitialData() {
+      try {
+        const [categories, cities, pricingPlans, vendors] = await Promise.all([
+          SupabaseDb.getCategories(),
+          SupabaseDb.getCities(),
+          SupabaseDb.getPricingPlans(),
+          SupabaseDb.getVendors(),
+        ]);
+
+        if (categories.length > 0) {
+          window.localStorage.setItem('hb_categories_v1', JSON.stringify(categories));
+        }
+        if (cities.length > 0) {
+          window.localStorage.setItem('hb_cities_v1', JSON.stringify(cities));
+        }
+        if (pricingPlans.length > 0) {
+          window.localStorage.setItem('hb_pricing_plans_v1', JSON.stringify(pricingPlans));
+        }
+        if (vendors.length > 0) {
+          window.localStorage.setItem('hb_vendors_v1', JSON.stringify(vendors));
+        }
+        window.dispatchEvent(new CustomEvent('hb_storage_update', { detail: { key: 'all' } }));
+      } catch (e) {
+        console.warn('Initial data sync error:', e);
+      }
+    }
+    syncInitialData();
+  }, []);
 
   // Scroll to top on route change
   useEffect(() => {
@@ -129,7 +162,11 @@ function AppContent() {
       <Navbar />
 
       {/* Main Page View Area */}
-      <main className="flex-1 pb-24 md:pb-0">{renderRoute()}</main>
+      <main className="flex-1 pb-24 md:pb-0">
+        <ErrorBoundary>
+          {renderRoute()}
+        </ErrorBoundary>
+      </main>
 
       {/* Footer */}
       <Footer />

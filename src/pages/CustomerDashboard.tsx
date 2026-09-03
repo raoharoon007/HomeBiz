@@ -21,6 +21,7 @@ import {
   Camera,
   Save,
 } from 'lucide-react';
+import { uploadImageToStorage } from '../lib/supabaseStorage';
 
 export function CustomerDashboard() {
   useStorageSubscription();
@@ -29,20 +30,24 @@ export function CustomerDashboard() {
   const { user, updateProfile } = useAuth();
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [settingsForm, setSettingsForm] = useState({ name: '', phone: '', city: '', address: '' });
   const [settingsSaved, setSettingsSaved] = useState(false);
 
-  // Profile picture handler
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Profile picture handler with Supabase Storage
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const dataUrl = ev.target?.result as string;
-      setAvatarPreview(dataUrl);
-      updateProfile({ avatar: dataUrl });
-    };
-    reader.readAsDataURL(file);
+    setIsUploading(true);
+    try {
+      const publicUrl = await uploadImageToStorage(file, 'avatars');
+      setAvatarPreview(publicUrl);
+      await updateProfile({ avatar: publicUrl });
+    } catch (err) {
+      console.warn('Avatar upload error:', err);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   // Settings save handler

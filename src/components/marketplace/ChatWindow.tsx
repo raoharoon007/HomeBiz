@@ -3,7 +3,7 @@ import { Storage, useStorageSubscription } from '../../lib/storage';
 import { useAuth } from '../../lib/authContext';
 import { Conversation, Message } from '../../types';
 import { Send, Paperclip, CheckCheck, Clock, MessageSquare, ArrowLeft, Store, User as UserIcon } from 'lucide-react';
-
+import { supabase } from '../../lib/supabase';
 import { triggerVendorAiResponse } from '../../lib/vendorAiBot';
 
 interface ChatWindowProps {
@@ -46,6 +46,44 @@ export function ChatWindow({ initialConversationId, onBackMobile }: ChatWindowPr
   useEffect(() => {
     setConversations(getUserConversations(Storage.getConversations()));
   }, [currentUserId, role, user?.sellerProfileId]);
+
+  // Supabase Realtime — subscribe to new messages in the active conversation
+  useEffect(() => {
+    if (!activeConvId) return;
+
+    const channel = supabase
+      .channel(`chat-${activeConvId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${activeConvId}`,
+        },
+        (payload: any) => {
+          const incoming = payload.new;
+          // Ignore messages from the current user (already added optimistically)
+          if (incoming.sender_id === currentUserId) return;
+          const msg: Message = {
+            id: incoming.id,
+            conversationId: incoming.conversation_id,
+            senderId: incoming.sender_id,
+            senderName: incoming.sender_name || 'User',
+            senderRole: incoming.sender_role || 'CUSTOMER',
+            text: incoming.text || incoming.content || '',
+            timestamp: incoming.created_at,
+            read: false,
+          };
+          Storage.appendRealtimeMessage(msg);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeConvId, currentUserId]);
 
   const activeConv = conversations.find((c) => c.id === activeConvId);
   const messages = Storage.getMessages(activeConvId);

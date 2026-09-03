@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Lock } from 'lucide-react';
+import { X, Lock, AlertCircle, CheckCircle } from 'lucide-react';
 import { SellerSubscription } from '../../types';
 
 type CheckoutPaymentMethod = 'jazz_cash' | 'easypaisa' | 'card';
@@ -54,6 +54,66 @@ export function PaymentGateway({
         return 'CARD';
     };
 
+    // --- Validation Helpers ---
+    const luhnCheck = (num: string): boolean => {
+        const digits = num.replace(/\D/g, '');
+        if (digits.length < 13 || digits.length > 19) return false;
+        let sum = 0;
+        let alt = false;
+        for (let i = digits.length - 1; i >= 0; i--) {
+            let n = parseInt(digits[i], 10);
+            if (alt) { n *= 2; if (n > 9) n -= 9; }
+            sum += n;
+            alt = !alt;
+        }
+        return sum % 10 === 0;
+    };
+
+    const validateExpiry = (val: string): boolean => {
+        const parts = val.split('/');
+        if (parts.length !== 2) return false;
+        const m = parseInt(parts[0], 10);
+        const y = parseInt('20' + parts[1], 10);
+        if (m < 1 || m > 12) return false;
+        const now = new Date();
+        const expDate = new Date(y, m - 1, 1);
+        return expDate >= new Date(now.getFullYear(), now.getMonth(), 1);
+    };
+
+    const validatePakistaniPhone = (phone: string): boolean => /^03[0-9]{9}$/.test(phone.replace(/\s/g, ''));
+
+    const formatCardNumber = (val: string): string => {
+        const digits = val.replace(/\D/g, '').slice(0, 16);
+        return digits.replace(/(\d{4})(?=\d)/g, '$1 ');
+    };
+
+    const formatExpiry = (val: string): string => {
+        const digits = val.replace(/\D/g, '').slice(0, 4);
+        if (digits.length >= 3) return digits.slice(0, 2) + '/' + digits.slice(2);
+        return digits;
+    };
+
+    const [validationError, setValidationError] = useState<string | null>(null);
+
+    const validateDetails = (): boolean => {
+        setValidationError(null);
+        if (paymentMethod === 'card') {
+            if (!cardName.trim()) { setValidationError('Please enter cardholder name.'); return false; }
+            if (!luhnCheck(cardNumber)) { setValidationError('Invalid card number. Please check and try again.'); return false; }
+            if (!validateExpiry(expiryDate)) { setValidationError('Invalid or expired card expiry date.'); return false; }
+            if (cvv.length < 3) { setValidationError('CVV must be 3 or 4 digits.'); return false; }
+        }
+        if (paymentMethod === 'jazz_cash') {
+            if (!validatePakistaniPhone(jazzNumber)) { setValidationError('Enter a valid JazzCash number (e.g. 03001234567).'); return false; }
+            if (!jazzPin.trim()) { setValidationError('Please enter the transaction reference number.'); return false; }
+        }
+        if (paymentMethod === 'easypaisa') {
+            if (!validatePakistaniPhone(easypaisaNumber)) { setValidationError('Enter a valid Easypaisa number (e.g. 03201234567).'); return false; }
+            if (!easypaisaPin.trim()) { setValidationError('Please enter the transaction reference number.'); return false; }
+        }
+        return true;
+    };
+
     const getProviderReference = (method: CheckoutPaymentMethod) => {
         if (method === 'jazz_cash') return jazzPin.trim();
         if (method === 'easypaisa') return easypaisaPin.trim();
@@ -63,25 +123,27 @@ export function PaymentGateway({
 
     const handlePaymentSubmit = async () => {
         if (!paymentMethod) return;
+        if (!validateDetails()) return;
 
         setLoading(true);
         const paidAt = new Date().toISOString();
         const providerReference = getProviderReference(paymentMethod);
+        // Generate Pakistan-style transaction ID
+        const txnId = `TXN-PK-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
         const result: PaymentResult = {
             paymentMethod: mapPaymentMethod(paymentMethod),
-            transactionId: `pay-${Date.now()}`,
+            transactionId: txnId,
             providerReference,
             amount,
             planSlug,
             paidAt,
         };
 
-        // Simulate payment processing
+        // Simulate 2s processing delay (replace with real Stripe/Safepay API call)
         setTimeout(() => {
             setLoading(false);
             setStep('confirmation');
 
-            // After showing confirmation, proceed
             setTimeout(() => {
                 onSuccess(result);
             }, 2000);
@@ -341,7 +403,7 @@ export function PaymentGateway({
                                     <input
                                         type="text"
                                         value={cardNumber}
-                                        onChange={(e) => setCardNumber(e.target.value)}
+                                        onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
                                         placeholder="4242 4242 4242 4242"
                                         maxLength={19}
                                         className="w-full px-4 py-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl text-xs focus:border-[#003527] outline-none font-mono"
@@ -356,7 +418,7 @@ export function PaymentGateway({
                                         <input
                                             type="text"
                                             value={expiryDate}
-                                            onChange={(e) => setExpiryDate(e.target.value)}
+                                            onChange={(e) => setExpiryDate(formatExpiry(e.target.value))}
                                             placeholder="MM/YY"
                                             maxLength={5}
                                             className="w-full px-4 py-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl text-xs focus:border-[#003527] outline-none"
@@ -379,15 +441,16 @@ export function PaymentGateway({
                             </div>
                         )}
 
+                        {validationError && (
+                            <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-2xl">
+                                <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                                <p className="text-xs text-red-600">{validationError}</p>
+                            </div>
+                        )}
                         <button
                             onClick={handlePaymentSubmit}
-                            disabled={
-                                loading ||
-                                (paymentMethod === 'jazz_cash' && (!jazzNumber || !jazzPin)) ||
-                                (paymentMethod === 'easypaisa' && (!easypaisaNumber || !easypaisaPin)) ||
-                                (paymentMethod === 'card' && (!cardNumber || !expiryDate || !cvv || !cardName))
-                            }
-                            className="w-full mt-6 px-4 py-3 rounded-full bg-[#003527] text-white font-black text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#064e3b] transition-colors cursor-pointer flex items-center justify-center gap-2"
+                            disabled={loading}
+                            className="w-full mt-4 px-4 py-3 rounded-full bg-[#003527] text-white font-black text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#064e3b] transition-colors cursor-pointer flex items-center justify-center gap-2"
                         >
                             {loading ? 'Processing...' : <><Lock className="w-4 h-4" /> Complete Payment</>}
                         </button>

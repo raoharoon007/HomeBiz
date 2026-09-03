@@ -152,6 +152,7 @@ export interface Booking {
   status: BookingStatus;
   paymentStatus: PaymentStatus;
   paymentMethod: 'CASH_ON_DELIVERY' | 'BANK_TRANSFER' | 'JAZZCASH_EASYPAISA' | 'CARD';
+  transactionId?: string;
   createdAt: string;
   reviewId?: string;
 }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { usePathname, Link } from '../lib/navigation';
 import { Storage, useStorageSubscription } from '../lib/storage';
 import { useAuth } from '../lib/authContext';
@@ -22,8 +22,11 @@ import {
   Edit,
   DollarSign,
   Check,
+  UploadCloud,
+  Loader,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { uploadImageToStorage } from '../lib/supabaseStorage';
 
 export function SellerDashboard() {
   useStorageSubscription();
@@ -113,6 +116,9 @@ export function SellerDashboard() {
   const [newSrvDesc, setNewSrvDesc] = useState('');
   const [newSrvPrice, setNewSrvPrice] = useState(5000);
   const [newSrvNotice, setNewSrvNotice] = useState('48 hours notice');
+  const [newSrvImage, setNewSrvImage] = useState<string | null>(null);
+  const [uploadingSrvImg, setUploadingSrvImg] = useState(false);
+  const srvImgRef = useRef<HTMLInputElement>(null);
 
   const totalEarnings = bookings
     .filter((b) => b.status === 'COMPLETED' || b.paymentStatus === 'PAID')
@@ -184,6 +190,7 @@ export function SellerDashboard() {
       price: newSrvPrice,
       category: vendor.category,
       image:
+        newSrvImage ||
         vendor.coverImage ||
         'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=600&q=80',
       noticePeriod: newSrvNotice,
@@ -195,6 +202,7 @@ export function SellerDashboard() {
     setNewServiceModal(false);
     setNewSrvTitle('');
     setNewSrvDesc('');
+    setNewSrvImage(null);
     confetti({ particleCount: 50, spread: 50 });
   };
 
@@ -1080,6 +1088,51 @@ export function SellerDashboard() {
                     onChange={(e) => setNewSrvNotice(e.target.value)}
                     className="w-full p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl outline-none"
                   />
+                </div>
+              </div>
+
+              {/* Service Image Upload */}
+              <div>
+                <label className="block font-bold text-[#1a1c1c] uppercase tracking-wider mb-2">
+                  Service Photo (Optional)
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  ref={srvImgRef}
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setUploadingSrvImg(true);
+                    try {
+                      const url = await uploadImageToStorage(file, 'services');
+                      setNewSrvImage(url);
+                    } catch (err) {
+                      console.warn('Service image upload error:', err);
+                    } finally {
+                      setUploadingSrvImg(false);
+                      if (srvImgRef.current) srvImgRef.current.value = '';
+                    }
+                  }}
+                />
+                <div className="flex items-center gap-3">
+                  {newSrvImage && (
+                    <img
+                      src={newSrvImage}
+                      alt="Service preview"
+                      className="w-20 h-20 rounded-xl object-cover border border-[#e3e2e1]"
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => srvImgRef.current?.click()}
+                    disabled={uploadingSrvImg}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl border-2 border-dashed border-stone-300 hover:border-[#003527] text-stone-500 hover:text-[#003527] text-xs font-bold transition-colors disabled:opacity-60"
+                  >
+                    {uploadingSrvImg ? <Loader className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
+                    {newSrvImage ? 'Change Photo' : 'Upload Photo'}
+                  </button>
                 </div>
               </div>
 

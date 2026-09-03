@@ -33,6 +33,7 @@ import {
   SEED_COMMISSION_SETTINGS,
 } from '../data/seedData';
 import React, { useState, useEffect } from 'react';
+import { SupabaseDb } from './supabaseDb';
 
 const STORAGE_KEYS = {
   USERS: 'hb_users_v1',
@@ -244,6 +245,9 @@ export const Storage = {
     bookings.unshift(booking);
     safeSetItem(STORAGE_KEYS.BOOKINGS, bookings);
 
+    // Sync to Supabase in background
+    SupabaseDb.createBooking(booking).catch((e) => console.warn('Supabase booking sync error:', e));
+
     // Add notification for vendor
     const vendor = Storage.getVendorById(booking.vendorId);
     if (vendor) {
@@ -288,6 +292,9 @@ export const Storage = {
     requests.unshift(request);
     safeSetItem(STORAGE_KEYS.REQUESTS, requests);
 
+    // Sync to Supabase in background
+    SupabaseDb.createCustomerRequest(request).catch((e) => console.warn('Supabase request sync error:', e));
+
     // Notify matching sellers in that category and city
     const vendors = Storage.getVendors().filter(
       (v) => v.category === request.category && (v.city.toLowerCase() === request.city.toLowerCase() || request.city === 'All Cities')
@@ -314,6 +321,9 @@ export const Storage = {
     const quotes = Storage.getQuotes();
     quotes.unshift(quote);
     safeSetItem(STORAGE_KEYS.QUOTES, quotes);
+
+    // Sync to Supabase in background
+    SupabaseDb.createQuote(quote).catch((e) => console.warn('Supabase quote sync error:', e));
 
     // Update request count
     const requests = Storage.getRequests();
@@ -422,7 +432,7 @@ export const Storage = {
     messages.push(newMsg);
     safeSetItem(STORAGE_KEYS.MESSAGES, messages);
 
-    // Update conversation last message
+    // Update conversation last message locally
     const conversations = Storage.getConversations();
     const conv = conversations.find((c) => c.id === msg.conversationId);
     if (conv) {
@@ -430,7 +440,32 @@ export const Storage = {
       conv.lastMessageAt = newMsg.createdAt;
       safeSetItem(STORAGE_KEYS.CONVERSATIONS, conversations);
     }
+
+    // Sync to Supabase in background
+    SupabaseDb.sendMessage(msg.conversationId, msg.senderId, msg.senderName, msg.senderRole, msg.text)
+      .catch((e) => console.warn('Supabase message sync error:', e));
+
     return newMsg;
+  },
+  // Called by Supabase Realtime handler to append incoming messages from other users
+  appendRealtimeMessage: (msg: Message): void => {
+    const messages = safeGetItem<Message[]>(STORAGE_KEYS.MESSAGES, SEED_MESSAGES);
+    // Deduplicate — don't add if already present
+    if (messages.some((m) => m.id === msg.id)) return;
+    messages.push(msg);
+    safeSetItem(STORAGE_KEYS.MESSAGES, messages);
+
+    // Update conversation last message
+    const conversations = Storage.getConversations();
+    const conv = conversations.find((c) => c.id === msg.conversationId);
+    if (conv) {
+      conv.lastMessage = msg.text;
+      conv.lastMessageAt = msg.timestamp || new Date().toISOString();
+      safeSetItem(STORAGE_KEYS.CONVERSATIONS, conversations);
+    }
+
+    // Trigger reactive UI update
+    window.dispatchEvent(new CustomEvent('hb_storage_update'));
   },
   getOrCreateConversation: (
     customerId: string,
@@ -484,6 +519,9 @@ export const Storage = {
     const reviews = safeGetItem<Review[]>(STORAGE_KEYS.REVIEWS, SEED_REVIEWS);
     reviews.unshift(newRev);
     safeSetItem(STORAGE_KEYS.REVIEWS, reviews);
+
+    // Sync to Supabase in background
+    SupabaseDb.createReview(newRev).catch((e) => console.warn('Supabase review sync error:', e));
 
     // Update vendor aggregate rating
     const vendor = Storage.getVendorById(review.vendorId);

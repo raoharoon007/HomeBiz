@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { sendBookingConfirmationEmail } from '../lib/emailService';
+import { PaymentGateway, PaymentResult } from '../components/marketplace/PaymentGateway';
 
 export function BookingPage() {
   useStorageSubscription();
@@ -70,6 +71,8 @@ export function BookingPage() {
   const [notes, setNotes] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'CASH_ON_DELIVERY' | 'JAZZCASH_EASYPAISA' | 'BANK_TRANSFER' | 'CARD'>('CASH_ON_DELIVERY');
   const [createdBooking, setCreatedBooking] = useState<Booking | null>(null);
+  const [showPaymentGateway, setShowPaymentGateway] = useState(false);
+  const [pendingTransactionId, setPendingTransactionId] = useState<string | null>(null);
 
   const timeSlots = [
     '10:00 AM - 12:00 PM',
@@ -92,7 +95,7 @@ export function BookingPage() {
     }
   };
 
-  const handleConfirmOrder = () => {
+  const createAndSaveBooking = (txnId?: string) => {
     const bookingNumber = `HB-PK-${Math.floor(10000 + Math.random() * 90000)}`;
     const newBooking: Booking = {
       id: `bk-${Date.now()}`,
@@ -121,6 +124,7 @@ export function BookingPage() {
       status: 'CONFIRMED',
       paymentStatus: paymentMethod === 'CASH_ON_DELIVERY' ? 'PENDING' : 'PAID',
       paymentMethod,
+      transactionId: txnId,
       createdAt: new Date().toISOString(),
     };
 
@@ -136,10 +140,35 @@ export function BookingPage() {
     });
   };
 
+  const handleConfirmOrder = () => {
+    // Online payment methods open the PaymentGateway modal
+    if (paymentMethod === 'JAZZCASH_EASYPAISA' || paymentMethod === 'CARD') {
+      setShowPaymentGateway(true);
+    } else {
+      createAndSaveBooking();
+    }
+  };
+
+  const handlePaymentSuccess = (result: PaymentResult) => {
+    setShowPaymentGateway(false);
+    setPendingTransactionId(result.transactionId);
+    createAndSaveBooking(result.transactionId);
+  };
+
   const stepLabels = ['Service', 'Date & Time', 'Details', 'Review', 'Payment', 'Confirmed'];
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      {/* Payment Gateway Modal */}
+      {showPaymentGateway && (
+        <PaymentGateway
+          planName={`${selectedService.title} by ${vendor.businessName}`}
+          amount={grandTotal}
+          planSlug={selectedService.id}
+          onSuccess={handlePaymentSuccess}
+          onCancel={() => setShowPaymentGateway(false)}
+        />
+      )}
       {/* STEPPER HEADER */}
       <div className="bg-white rounded-3xl p-6 border border-[#e3e2e1] shadow-xs">
         <div className="flex items-center justify-between gap-2 overflow-x-auto pb-2">
