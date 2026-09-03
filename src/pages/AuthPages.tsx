@@ -3,6 +3,7 @@ import { useRouter, Link, useSearchParams } from '../lib/navigation';
 import { useAuth } from '../lib/authContext';
 import { Storage, useStorageSubscription } from '../lib/storage';
 import { sendWelcomeAccountEmail, EmailLog } from '../lib/emailService';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { Sparkles, ArrowRight, ShieldCheck, UserCheck, Mail, CheckCircle } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -389,8 +390,20 @@ export function ForgotPasswordPage() {
           </div>
         ) : (
           <form
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
+              if (isSupabaseConfigured && email) {
+                const siteRedirectUrl = typeof window !== 'undefined' && window.location.origin
+                  ? `${window.location.origin}/auth/login`
+                  : 'https://home-biz-jade.vercel.app/auth/login';
+                try {
+                  await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+                    redirectTo: siteRedirectUrl,
+                  });
+                } catch (err) {
+                  console.warn('Password reset error:', err);
+                }
+              }
               setSent(true);
             }}
             className="space-y-4 text-left"

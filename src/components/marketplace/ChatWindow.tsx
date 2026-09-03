@@ -72,7 +72,8 @@ export function ChatWindow({ initialConversationId, onBackMobile }: ChatWindowPr
             senderName: incoming.sender_name || 'User',
             senderRole: incoming.sender_role || 'CUSTOMER',
             text: incoming.text || incoming.content || '',
-            timestamp: incoming.created_at,
+            createdAt: incoming.created_at || new Date().toISOString(),
+            timestamp: incoming.created_at || new Date().toISOString(),
             read: false,
           };
           Storage.appendRealtimeMessage(msg);

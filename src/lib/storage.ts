@@ -460,7 +460,7 @@ export const Storage = {
     const conv = conversations.find((c) => c.id === msg.conversationId);
     if (conv) {
       conv.lastMessage = msg.text;
-      conv.lastMessageAt = msg.timestamp || new Date().toISOString();
+      conv.lastMessageAt = msg.createdAt || msg.timestamp || new Date().toISOString();
       safeSetItem(STORAGE_KEYS.CONVERSATIONS, conversations);
     }
 

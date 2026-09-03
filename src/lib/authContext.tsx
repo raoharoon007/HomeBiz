@@ -28,6 +28,7 @@ interface AuthContextType {
   isLoggedIn: boolean;
   switchRole: (role: UserRole) => void;
   login: (email: string, password: string) => Promise<boolean>;
+  loginAs: (user: User) => void;
   register: (name: string, email: string, password: string, role: UserRole, city: string, businessName?: string) => Promise<User>;
   logout: () => Promise<void>;
   updateProfile: (updatedData: Partial<User>) => Promise<void>;
@@ -124,6 +125,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const loginAs = (customUser: User) => {
+    Storage.saveUser(customUser);
+    Storage.setActiveUserId(customUser.id);
+    setUser(customUser);
+  };
+
   const login = async (email: string, password: string): Promise<boolean> => {
     const normalizedEmail = email.trim().toLowerCase();
 
@@ -195,10 +202,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // 1. Register with Supabase Auth if configured
     if (isSupabaseConfigured) {
+      const siteRedirectUrl = typeof window !== 'undefined' && window.location.origin
+        ? `${window.location.origin}/`
+        : (import.meta.env.VITE_APP_URL || 'https://home-biz-jade.vercel.app/');
+
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: normalizedEmail,
         password: sanitizedPassword,
         options: {
+          emailRedirectTo: siteRedirectUrl,
           data: {
             name: name.trim(),
             role,
@@ -356,6 +368,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoggedIn: Boolean(user),
         switchRole,
         login,
+        loginAs,
         register,
         logout,
         updateProfile,

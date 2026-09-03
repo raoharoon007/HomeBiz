@@ -214,6 +214,7 @@ export interface Message {
   text: string;
   attachmentUrl?: string;
   createdAt: string;
+  timestamp?: string;
   read: boolean;
 }
 

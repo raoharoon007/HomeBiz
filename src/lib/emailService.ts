@@ -1,5 +1,6 @@
 import { Storage } from './storage';
 import { User, Booking, Quote } from '../types';
+import emailjs from '@emailjs/browser';
 
 export interface EmailLog {
   id: string;
@@ -11,6 +12,37 @@ export interface EmailLog {
   sentAt: string;
   type: 'WELCOME' | 'ORDER_CONFIRMED' | 'QUOTE_RECEIVED' | 'SECURITY';
   read?: boolean;
+}
+
+const EMAILJS_SERVICE_ID = import.meta.env.VITE_EMAILJS_SERVICE_ID || '';
+const EMAILJS_TEMPLATE_ID = import.meta.env.VITE_EMAILJS_TEMPLATE_ID || '';
+const EMAILJS_PUBLIC_KEY = import.meta.env.VITE_EMAILJS_PUBLIC_KEY || '';
+
+export const isEmailJsConfigured = Boolean(
+  EMAILJS_SERVICE_ID && EMAILJS_TEMPLATE_ID && EMAILJS_PUBLIC_KEY
+);
+
+/**
+ * Dispatch real email through EmailJS to customer inbox
+ */
+export async function sendLiveEmail(templateParams: Record<string, any>): Promise<boolean> {
+  if (!isEmailJsConfigured) {
+    console.info('ℹ️ EmailJS not configured in .env yet. Email logged locally.');
+    return false;
+  }
+  try {
+    const res = await emailjs.send(
+      EMAILJS_SERVICE_ID,
+      EMAILJS_TEMPLATE_ID,
+      templateParams,
+      EMAILJS_PUBLIC_KEY
+    );
+    console.log('✅ Real email sent successfully via EmailJS:', res.status, res.text);
+    return true;
+  } catch (err) {
+    console.warn('⚠️ EmailJS dispatch failed:', err);
+    return false;
+  }
 }
 
 const STORAGE_EMAIL_KEY = 'hb_email_logs_v1';
@@ -92,6 +124,16 @@ export function sendWelcomeAccountEmail(user: User): EmailLog {
 
   saveEmailLog(log);
 
+  // Dispatch real welcome email via EmailJS to user inbox
+  sendLiveEmail({
+    to_email: user.email,
+    to_name: user.name,
+    subject,
+    user_role: user.role,
+    city: user.city,
+    message: previewText,
+  }).catch((e) => console.warn('EmailJS welcome email error:', e));
+
   // Also push to in-app notifications
   Storage.createNotification({
     id: `notif-${Date.now()}`,
@@ -150,5 +192,33 @@ export function sendBookingConfirmationEmail(booking: Booking): EmailLog {
   };
 
   saveEmailLog(log);
+
+  // Dispatch real order receipt email via EmailJS to customer inbox
+  sendLiveEmail({
+    to_email: booking.customerEmail,
+    email: booking.customerEmail,
+    user_email: booking.customerEmail,
+    to_name: booking.customerName,
+    name: booking.customerName,
+    customer_name: booking.customerName,
+    booking_number: booking.bookingNumber,
+    order_id: booking.bookingNumber,
+    order_number: booking.bookingNumber,
+    service_title: booking.serviceTitle,
+    item_name: booking.serviceTitle,
+    vendor_name: booking.vendorName,
+    seller_name: booking.vendorName,
+    date: booking.date,
+    time_slot: booking.timeSlot,
+    total_amount: `Rs. ${booking.total.toLocaleString()}`,
+    amount: `Rs. ${booking.total.toLocaleString()}`,
+    price: `Rs. ${booking.total.toLocaleString()}`,
+    payment_method: booking.paymentMethod,
+    delivery_address: booking.deliveryAddress || 'Pick-up / Local address',
+    address: booking.deliveryAddress || 'Pick-up / Local address',
+    subject,
+    message: `Your booking #${booking.bookingNumber} for "${booking.serviceTitle}" with ${booking.vendorName} has been confirmed for ${booking.date} (${booking.timeSlot}). Total: Rs. ${booking.total.toLocaleString()} via ${booking.paymentMethod}.`,
+  }).catch((e) => console.warn('EmailJS booking dispatch error:', e));
+
   return log;
 }

@@ -33,7 +33,7 @@ export function BecomeSellerPage() {
 
     const newVendor: Vendor = {
       id: `v-${Date.now()}`,
-      userId: user.id,
+      userId: user?.id || 'user-v1',
       businessName,
       slug: `${slug}-${Date.now().toString().slice(-4)}`,
       tagline,
@@ -49,7 +49,7 @@ export function BecomeSellerPage() {
       verificationStatus: 'PENDING',
       coverImage:
         'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=1200&q=80',
-      avatar: user.avatar,
+      avatar: user?.avatar || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=200&q=80',
       gallery: [
         'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=600&q=80',
         'https://images.unsplash.com/photo-1535141192574-5d4897c13136?auto=format&fit=crop&w=600&q=80',
@@ -92,11 +92,13 @@ export function BecomeSellerPage() {
     Storage.registerVendor(newVendor);
 
     // Update current user to SELLER role
-    loginAs({
-      ...user,
-      role: 'SELLER',
-      sellerProfileId: newVendor.id,
-    });
+    if (user) {
+      loginAs({
+        ...user,
+        role: 'SELLER',
+        sellerProfileId: newVendor.id,
+      });
+    }
 
     confetti({
       particleCount: 100,
