@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Mail, Phone, MapPin, Send, CheckCircle, Clock } from 'lucide-react';
+import { Mail, Phone, MapPin, Send, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { validateForm, contactSchema } from '../lib/validationSchemas';
 
 export function ContactPage() {
   const [name, setName] = useState('');
@@ -8,9 +9,25 @@ export function ContactPage() {
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [sent, setSent] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Yup validation
+    const { isValid, errors } = await validateForm(contactSchema, {
+      name,
+      email,
+      subject,
+      message,
+    });
+
+    if (!isValid) {
+      setFieldErrors(errors);
+      return;
+    }
+    setFieldErrors({});
+
     setSent(true);
     confetti({
       particleCount: 70,
@@ -90,19 +107,31 @@ export function ContactPage() {
               </p>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
               <div>
                 <label className="block text-xs font-bold text-[#1a1c1c] uppercase tracking-wider mb-1">
                   Your Full Name
                 </label>
                 <input
                   type="text"
-                  required
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    if (fieldErrors.name) setFieldErrors(prev => ({ ...prev, name: '' }));
+                  }}
                   placeholder="e.g. Ayesha Siddiqui"
-                  className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+                  className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                    fieldErrors.name
+                      ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                      : 'border-[#e3e2e1] focus:border-[#003527]'
+                  }`}
                 />
+                {fieldErrors.name && (
+                  <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    {fieldErrors.name}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -111,12 +140,24 @@ export function ContactPage() {
                 </label>
                 <input
                   type="text"
-                  required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (fieldErrors.email) setFieldErrors(prev => ({ ...prev, email: '' }));
+                  }}
                   placeholder="ayesha@example.com or 0300-1234567"
-                  className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+                  className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                    fieldErrors.email
+                      ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                      : 'border-[#e3e2e1] focus:border-[#003527]'
+                  }`}
                 />
+                {fieldErrors.email && (
+                  <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    {fieldErrors.email}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -125,12 +166,24 @@ export function ContactPage() {
                 </label>
                 <input
                   type="text"
-                  required
                   value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
+                  onChange={(e) => {
+                    setSubject(e.target.value);
+                    if (fieldErrors.subject) setFieldErrors(prev => ({ ...prev, subject: '' }));
+                  }}
                   placeholder="e.g. Question about verified seller payout or custom quote"
-                  className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+                  className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                    fieldErrors.subject
+                      ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                      : 'border-[#e3e2e1] focus:border-[#003527]'
+                  }`}
                 />
+                {fieldErrors.subject && (
+                  <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    {fieldErrors.subject}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -139,12 +192,24 @@ export function ContactPage() {
                 </label>
                 <textarea
                   rows={4}
-                  required
                   value={message}
-                  onChange={(e) => setMessage(e.target.value)}
+                  onChange={(e) => {
+                    setMessage(e.target.value);
+                    if (fieldErrors.message) setFieldErrors(prev => ({ ...prev, message: '' }));
+                  }}
                   placeholder="Describe your inquiry in detail..."
-                  className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+                  className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                    fieldErrors.message
+                      ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                      : 'border-[#e3e2e1] focus:border-[#003527]'
+                  }`}
                 />
+                {fieldErrors.message && (
+                  <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    {fieldErrors.message}
+                  </p>
+                )}
               </div>
 
               <button

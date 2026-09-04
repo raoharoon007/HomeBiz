@@ -3,9 +3,10 @@ import { useRouter, useSearchParams } from '../lib/navigation';
 import { Storage, useStorageSubscription } from '../lib/storage';
 import { useAuth } from '../lib/authContext';
 import { CustomerRequest } from '../types';
-import { Sparkles, MapPin, Calendar, PlusCircle, CheckCircle, UploadCloud, Users, ArrowRight, Loader } from 'lucide-react';
+import { Sparkles, MapPin, Calendar, PlusCircle, CheckCircle, UploadCloud, Users, ArrowRight, Loader, AlertCircle } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { uploadImageToStorage } from '../lib/supabaseStorage';
+import { validateForm, customerRequestSchema } from '../lib/validationSchemas';
 
 export function RequestPage() {
   useStorageSubscription();
@@ -54,6 +55,7 @@ export function RequestPage() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const categories = Storage.getCategories();
   const cities = Storage.getCities();
@@ -63,9 +65,26 @@ export function RequestPage() {
     (v) => v.category === category && (v.city.toLowerCase() === city.toLowerCase() || city === 'All Cities')
   );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!serviceNeeded.trim() || !description.trim()) return;
+
+    // Yup validation
+    const { isValid, errors } = await validateForm(customerRequestSchema, {
+      category,
+      serviceNeeded,
+      city,
+      area,
+      preferredDate,
+      budget,
+      guestCount,
+      description,
+    });
+
+    if (!isValid) {
+      setFieldErrors(errors);
+      return;
+    }
+    setFieldErrors({});
 
     setSubmitting(true);
     const requestNumber = `REQ-PK-2024-${Math.floor(100 + Math.random() * 900)}`;
@@ -129,7 +148,7 @@ export function RequestPage() {
       </div>
 
       {/* Main Request Form */}
-      <form onSubmit={handleSubmit} className="bg-white rounded-3xl p-6 sm:p-8 border border-[#e3e2e1] shadow-xs space-y-6">
+      <form onSubmit={handleSubmit} className="bg-white rounded-3xl p-6 sm:p-8 border border-[#e3e2e1] shadow-xs space-y-6" noValidate>
         {/* Category & Service Title */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -138,7 +157,10 @@ export function RequestPage() {
             </label>
             <select
               value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              onChange={(e) => {
+                setCategory(e.target.value);
+                if (fieldErrors.category) setFieldErrors(prev => ({ ...prev, category: '' }));
+              }}
               className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none font-semibold text-[#1a1c1c]"
             >
               {categories.map((cat) => (
@@ -155,12 +177,24 @@ export function RequestPage() {
             </label>
             <input
               type="text"
-              required
               placeholder="e.g. 3-Tier Vintage Engagement Cake"
               value={serviceNeeded}
-              onChange={(e) => setServiceNeeded(e.target.value)}
-              className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+              onChange={(e) => {
+                setServiceNeeded(e.target.value);
+                if (fieldErrors.serviceNeeded) setFieldErrors(prev => ({ ...prev, serviceNeeded: '' }));
+              }}
+              className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                fieldErrors.serviceNeeded
+                  ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                  : 'border-[#e3e2e1] focus:border-[#003527]'
+              }`}
             />
+            {fieldErrors.serviceNeeded && (
+              <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {fieldErrors.serviceNeeded}
+              </p>
+            )}
           </div>
         </div>
 
@@ -172,7 +206,10 @@ export function RequestPage() {
             </label>
             <select
               value={city}
-              onChange={(e) => setCity(e.target.value)}
+              onChange={(e) => {
+                setCity(e.target.value);
+                if (fieldErrors.city) setFieldErrors(prev => ({ ...prev, city: '' }));
+              }}
               className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none font-semibold text-[#1a1c1c]"
             >
               {cities.map((c) => (
@@ -189,12 +226,24 @@ export function RequestPage() {
             </label>
             <input
               type="text"
-              required
               placeholder="e.g. DHA Phase 5, Gulberg, Clifton"
               value={area}
-              onChange={(e) => setArea(e.target.value)}
-              className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+              onChange={(e) => {
+                setArea(e.target.value);
+                if (fieldErrors.area) setFieldErrors(prev => ({ ...prev, area: '' }));
+              }}
+              className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                fieldErrors.area
+                  ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                  : 'border-[#e3e2e1] focus:border-[#003527]'
+              }`}
             />
+            {fieldErrors.area && (
+              <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {fieldErrors.area}
+              </p>
+            )}
           </div>
 
           <div>
@@ -203,11 +252,23 @@ export function RequestPage() {
             </label>
             <input
               type="date"
-              required
               value={preferredDate}
-              onChange={(e) => setPreferredDate(e.target.value)}
-              className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none font-semibold text-[#1a1c1c]"
+              onChange={(e) => {
+                setPreferredDate(e.target.value);
+                if (fieldErrors.preferredDate) setFieldErrors(prev => ({ ...prev, preferredDate: '' }));
+              }}
+              className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none font-semibold text-[#1a1c1c] transition-colors ${
+                fieldErrors.preferredDate
+                  ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                  : 'border-[#e3e2e1] focus:border-[#003527]'
+              }`}
             />
+            {fieldErrors.preferredDate && (
+              <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {fieldErrors.preferredDate}
+              </p>
+            )}
           </div>
         </div>
 
@@ -228,9 +289,18 @@ export function RequestPage() {
               max="50000"
               step="1000"
               value={budget}
-              onChange={(e) => setBudget(Number(e.target.value))}
+              onChange={(e) => {
+                setBudget(Number(e.target.value));
+                if (fieldErrors.budget) setFieldErrors(prev => ({ ...prev, budget: '' }));
+              }}
               className="w-full accent-[#003527] cursor-pointer"
             />
+            {fieldErrors.budget && (
+              <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {fieldErrors.budget}
+              </p>
+            )}
           </div>
 
           <div>
@@ -241,9 +311,22 @@ export function RequestPage() {
               type="text"
               placeholder="e.g. 45-50 guests / 4 pounds / 3 suits"
               value={guestCount}
-              onChange={(e) => setGuestCount(e.target.value)}
-              className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+              onChange={(e) => {
+                setGuestCount(e.target.value);
+                if (fieldErrors.guestCount) setFieldErrors(prev => ({ ...prev, guestCount: '' }));
+              }}
+              className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                fieldErrors.guestCount
+                  ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                  : 'border-[#e3e2e1] focus:border-[#003527]'
+              }`}
             />
+            {fieldErrors.guestCount && (
+              <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {fieldErrors.guestCount}
+              </p>
+            )}
           </div>
         </div>
 
@@ -253,13 +336,25 @@ export function RequestPage() {
             Detailed Requirements
           </label>
           <textarea
-            required
             rows={4}
             placeholder="Explain flavor preferences, themes, colors, dietary requirements (halal, organic, sugar-free), or specific timeline details..."
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+            onChange={(e) => {
+              setDescription(e.target.value);
+              if (fieldErrors.description) setFieldErrors(prev => ({ ...prev, description: '' }));
+            }}
+            className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+              fieldErrors.description
+                ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                : 'border-[#e3e2e1] focus:border-[#003527]'
+            }`}
           />
+          {fieldErrors.description && (
+            <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+              <AlertCircle className="w-3 h-3" />
+              {fieldErrors.description}
+            </p>
+          )}
         </div>
 
         {/* Reference Image Attachments */}

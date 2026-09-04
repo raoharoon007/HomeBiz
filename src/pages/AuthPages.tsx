@@ -4,8 +4,9 @@ import { useAuth } from '../lib/authContext';
 import { Storage, useStorageSubscription } from '../lib/storage';
 import { sendWelcomeAccountEmail, EmailLog } from '../lib/emailService';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { Sparkles, ArrowRight, ShieldCheck, UserCheck, Mail, CheckCircle } from 'lucide-react';
+import { Sparkles, ArrowRight, ShieldCheck, UserCheck, Mail, CheckCircle, AlertCircle } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { validateForm, loginSchema, registerSchema, forgotPasswordSchema } from '../lib/validationSchemas';
 
 export function LoginPage() {
   const router = useRouter();
@@ -15,20 +16,25 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) {
-      setError('Please enter your email address');
+    setError('');
+
+    // Yup validation
+    const { isValid, errors } = await validateForm(loginSchema, {
+      email,
+      password,
+    });
+
+    if (!isValid) {
+      setFieldErrors(errors);
       return;
     }
-    if (!password.trim()) {
-      setError('Please enter your password');
-      return;
-    }
+    setFieldErrors({});
 
     setLoading(true);
-    setError('');
 
     try {
       const success = await login(email.trim(), password);
@@ -69,27 +75,38 @@ export function LoginPage() {
         </div>
 
         {error && (
-          <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-medium">
-            {error}
+          <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-medium flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+            <span>{error}</span>
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleLogin} className="space-y-4" noValidate>
           <div>
             <label className="block text-xs font-bold text-[#1a1c1c] uppercase tracking-wider mb-1">
               Email Address
             </label>
             <input
               type="email"
-              required
               value={email}
               onChange={(e) => {
                 setEmail(e.target.value);
                 setError('');
+                if (fieldErrors.email) setFieldErrors(prev => ({ ...prev, email: '' }));
               }}
               placeholder="name@domain.com"
-              className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+              className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                fieldErrors.email
+                  ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                  : 'border-[#e3e2e1] focus:border-[#003527]'
+              }`}
             />
+            {fieldErrors.email && (
+              <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {fieldErrors.email}
+              </p>
+            )}
           </div>
 
           <div>
@@ -103,19 +120,33 @@ export function LoginPage() {
             </div>
             <input
               type="password"
-              required
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setError('');
+                if (fieldErrors.password) setFieldErrors(prev => ({ ...prev, password: '' }));
+              }}
               placeholder="••••••••"
-              className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+              className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                fieldErrors.password
+                  ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                  : 'border-[#e3e2e1] focus:border-[#003527]'
+              }`}
             />
+            {fieldErrors.password && (
+              <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {fieldErrors.password}
+              </p>
+            )}
           </div>
 
           <button
             type="submit"
-            className="w-full py-3.5 px-4 rounded-full bg-[#003527] hover:bg-[#064e3b] text-white font-bold text-xs shadow-md transition-colors flex items-center justify-center gap-2"
+            disabled={loading}
+            className="w-full py-3.5 px-4 rounded-full bg-[#003527] hover:bg-[#064e3b] text-white font-bold text-xs shadow-md transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            <span>Sign In</span>
+            <span>{loading ? 'Signing in...' : 'Sign In'}</span>
             <ArrowRight className="w-4 h-4 text-[#ffe088]" />
           </button>
         </form>
@@ -143,22 +174,32 @@ export function RegisterPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [accountType, setAccountType] = useState<'CUSTOMER' | 'SELLER'>('CUSTOMER');
   const cities = Storage.getCities();
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
 
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters long.');
+    // Yup validation
+    const { isValid, errors } = await validateForm(registerSchema, {
+      name,
+      email,
+      phone,
+      password,
+      confirmPassword,
+      role: accountType,
+      city,
+      businessName,
+    });
+
+    if (!isValid) {
+      setFieldErrors(errors);
       return;
     }
-
-    if (password !== confirmPassword) {
-      setError('Passwords do not match. Please enter the same password twice.');
-      return;
-    }
+    setFieldErrors({});
 
     const normalizedEmail = email.trim().toLowerCase();
     const existing = Storage.getUsers().find((user) => user.email.toLowerCase() === normalizedEmail);
@@ -209,8 +250,9 @@ export function RegisterPage() {
         </div>
 
         {error && (
-          <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-medium">
-            {error}
+          <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-medium flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+            <span>{error}</span>
           </div>
         )}
 
@@ -218,7 +260,10 @@ export function RegisterPage() {
         <div className="grid grid-cols-2 gap-2 p-1 bg-[#faf9f8] rounded-2xl border border-[#e3e2e1]">
           <button
             type="button"
-            onClick={() => setAccountType('CUSTOMER')}
+            onClick={() => {
+              setAccountType('CUSTOMER');
+              setFieldErrors({});
+            }}
             className={`py-2 text-xs font-bold rounded-xl transition-colors ${accountType === 'CUSTOMER'
               ? 'bg-[#003527] text-white shadow-xs'
               : 'text-[#665d55] hover:text-[#1a1c1c]'
@@ -228,7 +273,10 @@ export function RegisterPage() {
           </button>
           <button
             type="button"
-            onClick={() => setAccountType('SELLER')}
+            onClick={() => {
+              setAccountType('SELLER');
+              setFieldErrors({});
+            }}
             className={`py-2 text-xs font-bold rounded-xl transition-colors ${accountType === 'SELLER'
               ? 'bg-[#003527] text-white shadow-xs'
               : 'text-[#665d55] hover:text-[#1a1c1c]'
@@ -238,19 +286,31 @@ export function RegisterPage() {
           </button>
         </div>
 
-        <form onSubmit={handleRegister} className="space-y-4">
+        <form onSubmit={handleRegister} className="space-y-4" noValidate>
           <div>
             <label className="block text-xs font-bold text-[#1a1c1c] uppercase tracking-wider mb-1">
               Full Name
             </label>
             <input
               type="text"
-              required
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (fieldErrors.name) setFieldErrors(prev => ({ ...prev, name: '' }));
+              }}
               placeholder="e.g. Fatima Ali"
-              className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+              className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                fieldErrors.name
+                  ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                  : 'border-[#e3e2e1] focus:border-[#003527]'
+              }`}
             />
+            {fieldErrors.name && (
+              <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {fieldErrors.name}
+              </p>
+            )}
           </div>
 
           <div>
@@ -259,12 +319,24 @@ export function RegisterPage() {
             </label>
             <input
               type="email"
-              required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (fieldErrors.email) setFieldErrors(prev => ({ ...prev, email: '' }));
+              }}
               placeholder="fatima@example.com"
-              className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+              className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                fieldErrors.email
+                  ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                  : 'border-[#e3e2e1] focus:border-[#003527]'
+              }`}
             />
+            {fieldErrors.email && (
+              <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {fieldErrors.email}
+              </p>
+            )}
           </div>
 
           {accountType === 'SELLER' && (
@@ -274,12 +346,24 @@ export function RegisterPage() {
               </label>
               <input
                 type="text"
-                required
                 value={businessName}
-                onChange={(e) => setBusinessName(e.target.value)}
+                onChange={(e) => {
+                  setBusinessName(e.target.value);
+                  if (fieldErrors.businessName) setFieldErrors(prev => ({ ...prev, businessName: '' }));
+                }}
                 placeholder="e.g. Fatima's Cake Studio"
-                className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+                className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                  fieldErrors.businessName
+                    ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                    : 'border-[#e3e2e1] focus:border-[#003527]'
+                }`}
               />
+              {fieldErrors.businessName && (
+                <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {fieldErrors.businessName}
+                </p>
+              )}
             </div>
           )}
 
@@ -289,8 +373,15 @@ export function RegisterPage() {
             </label>
             <select
               value={city}
-              onChange={(e) => setCity(e.target.value)}
-              className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none font-medium"
+              onChange={(e) => {
+                setCity(e.target.value);
+                if (fieldErrors.city) setFieldErrors(prev => ({ ...prev, city: '' }));
+              }}
+              className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none font-medium transition-colors ${
+                fieldErrors.city
+                  ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                  : 'border-[#e3e2e1] focus:border-[#003527]'
+              }`}
             >
               {cities.map((cityOption) => (
                 <option key={cityOption.id} value={cityOption.name}>
@@ -298,6 +389,12 @@ export function RegisterPage() {
                 </option>
               ))}
             </select>
+            {fieldErrors.city && (
+              <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {fieldErrors.city}
+              </p>
+            )}
           </div>
 
           <div>
@@ -306,12 +403,24 @@ export function RegisterPage() {
             </label>
             <input
               type="tel"
-              required
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => {
+                setPhone(e.target.value);
+                if (fieldErrors.phone) setFieldErrors(prev => ({ ...prev, phone: '' }));
+              }}
               placeholder="0300 1234567"
-              className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+              className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                fieldErrors.phone
+                  ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                  : 'border-[#e3e2e1] focus:border-[#003527]'
+              }`}
             />
+            {fieldErrors.phone && (
+              <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {fieldErrors.phone}
+              </p>
+            )}
           </div>
 
           <div>
@@ -320,15 +429,25 @@ export function RegisterPage() {
             </label>
             <input
               type="password"
-              required
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
                 setError('');
+                if (fieldErrors.password) setFieldErrors(prev => ({ ...prev, password: '' }));
               }}
               placeholder="••••••••"
-              className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+              className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                fieldErrors.password
+                  ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                  : 'border-[#e3e2e1] focus:border-[#003527]'
+              }`}
             />
+            {fieldErrors.password && (
+              <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {fieldErrors.password}
+              </p>
+            )}
           </div>
 
           <div>
@@ -337,22 +456,33 @@ export function RegisterPage() {
             </label>
             <input
               type="password"
-              required
               value={confirmPassword}
               onChange={(e) => {
                 setConfirmPassword(e.target.value);
                 setError('');
+                if (fieldErrors.confirmPassword) setFieldErrors(prev => ({ ...prev, confirmPassword: '' }));
               }}
               placeholder="Repeat password"
-              className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+              className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                fieldErrors.confirmPassword
+                  ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                  : 'border-[#e3e2e1] focus:border-[#003527]'
+              }`}
             />
+            {fieldErrors.confirmPassword && (
+              <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {fieldErrors.confirmPassword}
+              </p>
+            )}
           </div>
 
           <button
             type="submit"
-            className="w-full py-3.5 px-4 rounded-full bg-[#003527] hover:bg-[#064e3b] text-white font-bold text-xs shadow-md transition-colors flex items-center justify-center gap-2"
+            disabled={loading}
+            className="w-full py-3.5 px-4 rounded-full bg-[#003527] hover:bg-[#064e3b] text-white font-bold text-xs shadow-md transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            <span>Create {accountType === 'SELLER' ? 'Seller Account' : 'Customer Account'}</span>
+            <span>{loading ? 'Creating account...' : `Create ${accountType === 'SELLER' ? 'Seller Account' : 'Customer Account'}`}</span>
             <ArrowRight className="w-4 h-4 text-[#ffe088]" />
           </button>
         </form>
@@ -371,6 +501,36 @@ export function RegisterPage() {
 export function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Yup validation
+    const { isValid, errors } = await validateForm(forgotPasswordSchema, { email });
+    if (!isValid) {
+      setFieldErrors(errors);
+      return;
+    }
+    setFieldErrors({});
+    setLoading(true);
+
+    if (isSupabaseConfigured && email) {
+      const siteRedirectUrl = typeof window !== 'undefined' && window.location.origin
+        ? `${window.location.origin}/auth/login`
+        : 'https://home-biz-jade.vercel.app/auth/login';
+      try {
+        await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+          redirectTo: siteRedirectUrl,
+        });
+      } catch (err) {
+        console.warn('Password reset error:', err);
+      }
+    }
+    setLoading(false);
+    setSent(true);
+  };
 
   return (
     <div className="max-w-md mx-auto px-4 py-12">
@@ -390,23 +550,9 @@ export function ForgotPasswordPage() {
           </div>
         ) : (
           <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (isSupabaseConfigured && email) {
-                const siteRedirectUrl = typeof window !== 'undefined' && window.location.origin
-                  ? `${window.location.origin}/auth/login`
-                  : 'https://home-biz-jade.vercel.app/auth/login';
-                try {
-                  await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-                    redirectTo: siteRedirectUrl,
-                  });
-                } catch (err) {
-                  console.warn('Password reset error:', err);
-                }
-              }
-              setSent(true);
-            }}
+            onSubmit={handleForgotPassword}
             className="space-y-4 text-left"
+            noValidate
           >
             <div className="text-center space-y-1">
               <h1 className="text-2xl font-black text-[#1a1c1c] font-['Plus_Jakarta_Sans']">
@@ -421,19 +567,32 @@ export function ForgotPasswordPage() {
               </label>
               <input
                 type="email"
-                required
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (fieldErrors.email) setFieldErrors(prev => ({ ...prev, email: '' }));
+                }}
                 placeholder="name@example.com"
-                className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+                className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                  fieldErrors.email
+                    ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                    : 'border-[#e3e2e1] focus:border-[#003527]'
+                }`}
               />
+              {fieldErrors.email && (
+                <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {fieldErrors.email}
+                </p>
+              )}
             </div>
 
             <button
               type="submit"
-              className="w-full py-3.5 px-4 rounded-full bg-[#003527] text-white font-bold text-xs shadow-md hover:bg-[#064e3b]"
+              disabled={loading}
+              className="w-full py-3.5 px-4 rounded-full bg-[#003527] text-white font-bold text-xs shadow-md hover:bg-[#064e3b] disabled:opacity-50"
             >
-              Send Reset Link
+              {loading ? 'Sending link...' : 'Send Reset Link'}
             </button>
           </form>
         )}

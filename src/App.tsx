@@ -82,6 +82,13 @@ function AppContent() {
 
   // Route resolver
   const renderRoute = () => {
+    const protectedPaths = ['/customer/dashboard', '/seller/dashboard', '/admin/dashboard'];
+    const isProtectedRoute = protectedPaths.some((path) => pathname.startsWith(path));
+
+    if (isProtectedRoute && !user) {
+      return <LoginPage />;
+    }
+
     if (pathname === '/' || pathname === '') {
       return <HomePage />;
     }

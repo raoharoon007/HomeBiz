@@ -432,12 +432,52 @@ export const Storage = {
     messages.push(newMsg);
     safeSetItem(STORAGE_KEYS.MESSAGES, messages);
 
-    // Update conversation last message locally
+    // Update conversation last message and unread count locally
     const conversations = Storage.getConversations();
     const conv = conversations.find((c) => c.id === msg.conversationId);
     if (conv) {
       conv.lastMessage = msg.text;
       conv.lastMessageAt = newMsg.createdAt;
+
+      if (msg.senderRole === 'CUSTOMER') {
+        conv.unreadCountVendor = (conv.unreadCountVendor || 0) + 1;
+
+        // Send notification to seller
+        const vendor =
+          Storage.getVendorById(conv.vendorId) ||
+          Storage.getVendors().find((v) => v.id === conv.vendorId || v.userId === conv.participants.find((p) => p.role === 'SELLER')?.id);
+        const sellerUserId = vendor?.userId || conv.participants.find((p) => p.role === 'SELLER')?.id;
+
+        if (sellerUserId) {
+          Storage.createNotification({
+            id: `notif-${Date.now()}`,
+            userId: sellerUserId,
+            title: `New message from ${msg.senderName} 💬`,
+            message: msg.text.length > 80 ? msg.text.slice(0, 77) + '...' : msg.text,
+            type: 'GENERAL',
+            link: '/seller/dashboard/messages',
+            read: false,
+            createdAt: new Date().toISOString(),
+          });
+        }
+      } else {
+        conv.unreadCountCustomer = (conv.unreadCountCustomer || 0) + 1;
+
+        // Send notification to customer
+        if (conv.customerId) {
+          Storage.createNotification({
+            id: `notif-${Date.now()}`,
+            userId: conv.customerId,
+            title: `New message from ${msg.senderName} 💬`,
+            message: msg.text.length > 80 ? msg.text.slice(0, 77) + '...' : msg.text,
+            type: 'GENERAL',
+            link: '/customer/dashboard/messages',
+            read: false,
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
+
       safeSetItem(STORAGE_KEYS.CONVERSATIONS, conversations);
     }
 
@@ -446,6 +486,18 @@ export const Storage = {
       .catch((e) => console.warn('Supabase message sync error:', e));
 
     return newMsg;
+  },
+  markConversationAsRead: (conversationId: string, role: 'CUSTOMER' | 'SELLER'): void => {
+    const conversations = Storage.getConversations();
+    const conv = conversations.find((c) => c.id === conversationId);
+    if (conv) {
+      if (role === 'SELLER') {
+        conv.unreadCountVendor = 0;
+      } else {
+        conv.unreadCountCustomer = 0;
+      }
+      safeSetItem(STORAGE_KEYS.CONVERSATIONS, conversations);
+    }
   },
   // Called by Supabase Realtime handler to append incoming messages from other users
   appendRealtimeMessage: (msg: Message): void => {
@@ -476,7 +528,7 @@ export const Storage = {
     let conv = conversations.find((c) => c.customerId === customerId && c.vendorId === vendorId);
     if (!conv) {
       const customer = Storage.getUserById(customerId);
-      const vendor = Storage.getVendorById(vendorId);
+      const vendor = Storage.getVendorById(vendorId) || Storage.getVendors().find((v) => v.id === vendorId || v.userId === vendorId);
       conv = {
         id: `conv-${Date.now()}`,
         participants: [
@@ -498,6 +550,11 @@ export const Storage = {
         unreadCountVendor: 0,
       };
       conversations.unshift(conv);
+      safeSetItem(STORAGE_KEYS.CONVERSATIONS, conversations);
+    } else if (context) {
+      conv.contextType = context.type;
+      conv.contextId = context.id;
+      conv.contextTitle = context.title;
       safeSetItem(STORAGE_KEYS.CONVERSATIONS, conversations);
     }
     return conv;

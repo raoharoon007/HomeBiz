@@ -14,10 +14,12 @@ import {
   ArrowRight,
   ArrowLeft,
   ShieldCheck,
+  AlertCircle,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { sendBookingConfirmationEmail } from '../lib/emailService';
 import { PaymentGateway, PaymentResult } from '../components/marketplace/PaymentGateway';
+import { validateForm, bookingDetailsSchema } from '../lib/validationSchemas';
 
 export function BookingPage() {
   useStorageSubscription();
@@ -52,9 +54,26 @@ export function BookingPage() {
   const vendorId = pathname.replace('/booking/', '').split('?')[0];
   const vendor = Storage.getVendorById(vendorId) || Storage.getVendors()[0];
 
+  const fallbackService: ServiceItem = {
+    id: 'custom-order',
+    title: `${vendor.businessName} - Bespoke Order / Slot Booking`,
+    description: vendor.tagline || vendor.description || 'Custom home business booking and service slot tailored to your event or personal requirements.',
+    price: vendor.startingPrice || 1500,
+    duration: 'Custom schedule',
+    noticePeriod: vendor.availabilityNotice || '24-48 hours notice',
+    image: vendor.coverImage || vendor.avatar || 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=600&q=80',
+    category: vendor.category,
+    addons: [
+      { id: 'addon-fast-track', name: 'Priority / Same-Day Fast Track Prep', price: 500, description: 'Expedited processing and preparation' },
+      { id: 'addon-gift-wrap', name: 'Gift Box & Custom Ribbon Packaging', price: 350, description: 'Celebration-ready luxury presentation' },
+    ],
+  };
+
+  const availableServices = (vendor.services && vendor.services.length > 0) ? vendor.services : [fallbackService];
+
   const preselectedServiceId = searchParams.get('serviceId');
   const initialService =
-    vendor.services.find((s) => s.id === preselectedServiceId) || vendor.services[0];
+    availableServices.find((s) => s.id === preselectedServiceId) || availableServices[0];
 
   // Stepper state: 1 to 6
   const [step, setStep] = useState(1);
@@ -70,6 +89,7 @@ export function BookingPage() {
   const [deliveryAddress, setDeliveryAddress] = useState(user?.address || 'House 142, Phase 5 DHA, Lahore');
   const [notes, setNotes] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'CASH_ON_DELIVERY' | 'JAZZCASH_EASYPAISA' | 'BANK_TRANSFER' | 'CARD'>('CASH_ON_DELIVERY');
+  const [deliveryErrors, setDeliveryErrors] = useState<Record<string, string>>({});
   const [createdBooking, setCreatedBooking] = useState<Booking | null>(null);
   const [showPaymentGateway, setShowPaymentGateway] = useState(false);
   const [pendingTransactionId, setPendingTransactionId] = useState<string | null>(null);
@@ -83,7 +103,7 @@ export function BookingPage() {
   ];
 
   const addonsTotal = selectedAddons.reduce((sum, a) => sum + a.price, 0);
-  const subtotal = selectedService.price;
+  const subtotal = selectedService?.price ?? initialService.price;
   const platformFee = 150;
   const grandTotal = subtotal + addonsTotal + platformFee;
 
@@ -95,7 +115,8 @@ export function BookingPage() {
     }
   };
 
-  const createAndSaveBooking = (txnId?: string) => {
+  const createAndSaveBooking = (txnId?: string, overrideMethod?: Booking['paymentMethod']) => {
+    const finalPaymentMethod = overrideMethod || paymentMethod;
     const bookingNumber = `HB-PK-${Math.floor(10000 + Math.random() * 90000)}`;
     const newBooking: Booking = {
       id: `bk-${Date.now()}`,
@@ -107,9 +128,9 @@ export function BookingPage() {
       vendorId: vendor.id,
       vendorName: vendor.businessName,
       vendorSlug: vendor.slug,
-      serviceId: selectedService.id,
-      serviceTitle: selectedService.title,
-      serviceImage: selectedService.image,
+      serviceId: selectedService?.id || initialService.id,
+      serviceTitle: selectedService?.title || initialService.title,
+      serviceImage: selectedService?.image || initialService.image || vendor.coverImage || vendor.avatar,
       date: bookingDate,
       timeSlot,
       notes,
@@ -122,8 +143,8 @@ export function BookingPage() {
       discount: 0,
       total: grandTotal,
       status: 'CONFIRMED',
-      paymentStatus: paymentMethod === 'CASH_ON_DELIVERY' ? 'PENDING' : 'PAID',
-      paymentMethod,
+      paymentStatus: finalPaymentMethod === 'CASH_ON_DELIVERY' ? 'PENDING' : 'PAID',
+      paymentMethod: finalPaymentMethod,
       transactionId: txnId,
       createdAt: new Date().toISOString(),
     };
@@ -141,8 +162,8 @@ export function BookingPage() {
   };
 
   const handleConfirmOrder = () => {
-    // Online payment methods open the PaymentGateway modal
-    if (paymentMethod === 'JAZZCASH_EASYPAISA' || paymentMethod === 'CARD') {
+    // Online escrow payment methods open the PaymentGateway modal
+    if (paymentMethod === 'JAZZCASH_EASYPAISA' || paymentMethod === 'CARD' || paymentMethod === 'BANK_TRANSFER') {
       setShowPaymentGateway(true);
     } else {
       createAndSaveBooking();
@@ -152,7 +173,13 @@ export function BookingPage() {
   const handlePaymentSuccess = (result: PaymentResult) => {
     setShowPaymentGateway(false);
     setPendingTransactionId(result.transactionId);
-    createAndSaveBooking(result.transactionId);
+
+    let resolvedMethod: Booking['paymentMethod'] = 'JAZZCASH_EASYPAISA';
+    if (result.paymentMethod === 'BANK_TRANSFER') resolvedMethod = 'BANK_TRANSFER';
+    else if (result.paymentMethod === 'CARD') resolvedMethod = 'CARD';
+    else if (result.paymentMethod === 'JAZZ_CASH' || result.paymentMethod === 'EASYPAISA') resolvedMethod = 'JAZZCASH_EASYPAISA';
+
+    createAndSaveBooking(result.transactionId, resolvedMethod);
   };
 
   const stepLabels = ['Service', 'Date & Time', 'Details', 'Review', 'Payment', 'Confirmed'];
@@ -162,9 +189,16 @@ export function BookingPage() {
       {/* Payment Gateway Modal */}
       {showPaymentGateway && (
         <PaymentGateway
-          planName={`${selectedService.title} by ${vendor.businessName}`}
+          planName={`${selectedService?.title || initialService.title} by ${vendor.businessName}`}
           amount={grandTotal}
-          planSlug={selectedService.id}
+          planSlug={selectedService?.id || initialService.id}
+          initialMethod={
+            paymentMethod === 'BANK_TRANSFER'
+              ? 'bank_transfer'
+              : paymentMethod === 'CARD'
+              ? 'card'
+              : 'jazz_cash'
+          }
           onSuccess={handlePaymentSuccess}
           onCancel={() => setShowPaymentGateway(false)}
         />
@@ -212,10 +246,20 @@ export function BookingPage() {
             <p className="text-xs text-[#665d55]">Ordering from {vendor.businessName}</p>
           </div>
 
+          {vendor.services.length === 0 && (
+            <div className="p-4 bg-[#b0f0d6]/20 border border-[#95d3ba]/50 rounded-2xl flex items-start gap-3">
+              <Sparkles className="w-5 h-5 text-[#003527] shrink-0 mt-0.5" />
+              <div className="text-xs text-[#003527]">
+                <strong className="block font-bold mb-0.5">Bespoke Creator Slot Booking</strong>
+                <p>This home business takes custom orders directly. Select this slot, pick your preferred date and time, and describe any specific flavors, portions, or styling in the details step.</p>
+              </div>
+            </div>
+          )}
+
           {/* Service Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {vendor.services.map((srv) => {
-              const isSelected = selectedService.id === srv.id;
+            {availableServices.map((srv) => {
+              const isSelected = (selectedService?.id || initialService.id) === srv.id;
               return (
                 <div
                   key={srv.id}
@@ -240,7 +284,7 @@ export function BookingPage() {
           </div>
 
           {/* Add-ons Selector */}
-          {selectedService.addons && selectedService.addons.length > 0 && (
+          {selectedService?.addons && selectedService.addons.length > 0 && (
             <div className="pt-4 border-t border-[#f4f3f2] space-y-3">
               <h3 className="font-bold text-sm text-[#1a1c1c]">Optional Add-ons & Extras</h3>
               <div className="space-y-2">
@@ -399,12 +443,24 @@ export function BookingPage() {
             </label>
             <input
               type="text"
-              required
               value={deliveryAddress}
-              onChange={(e) => setDeliveryAddress(e.target.value)}
+              onChange={(e) => {
+                setDeliveryAddress(e.target.value);
+                if (deliveryErrors.deliveryAddress) setDeliveryErrors(prev => ({ ...prev, deliveryAddress: '' }));
+              }}
               placeholder="e.g. House 142, Street 7, Phase 5 DHA, Lahore"
-              className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+              className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                deliveryErrors.deliveryAddress
+                  ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                  : 'border-[#e3e2e1] focus:border-[#003527]'
+              }`}
             />
+            {deliveryErrors.deliveryAddress && (
+              <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {deliveryErrors.deliveryAddress}
+              </p>
+            )}
           </div>
 
           {/* Custom Notes */}
@@ -415,10 +471,23 @@ export function BookingPage() {
             <textarea
               rows={3}
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={(e) => {
+                setNotes(e.target.value);
+                if (deliveryErrors.notes) setDeliveryErrors(prev => ({ ...prev, notes: '' }));
+              }}
               placeholder="e.g. Please write 'Happy 25th Birthday Maham!' in cursive pastel pink."
-              className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+              className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                deliveryErrors.notes
+                  ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                  : 'border-[#e3e2e1] focus:border-[#003527]'
+              }`}
             />
+            {deliveryErrors.notes && (
+              <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {deliveryErrors.notes}
+              </p>
+            )}
           </div>
 
           <div className="flex items-center justify-between pt-4">
@@ -429,7 +498,19 @@ export function BookingPage() {
               Back
             </button>
             <button
-              onClick={() => setStep(4)}
+              onClick={async () => {
+                const { isValid, errors } = await validateForm(bookingDetailsSchema, {
+                  deliveryType,
+                  deliveryAddress,
+                  notes,
+                });
+                if (!isValid) {
+                  setDeliveryErrors(errors);
+                  return;
+                }
+                setDeliveryErrors({});
+                setStep(4);
+              }}
               className="px-6 py-3 rounded-full bg-[#003527] hover:bg-[#064e3b] text-white font-bold text-xs shadow-md flex items-center gap-2"
             >
               <span>Review Order</span>
@@ -451,12 +532,12 @@ export function BookingPage() {
 
           <div className="p-4 bg-[#faf9f8] rounded-2xl border border-[#e3e2e1] flex items-center gap-4">
             <img
-              src={selectedService.image}
-              alt={selectedService.title}
+              src={selectedService?.image || initialService.image}
+              alt={selectedService?.title || initialService.title}
               className="w-16 h-16 rounded-xl object-cover"
             />
             <div className="flex-1">
-              <h3 className="font-bold text-sm text-[#1a1c1c]">{selectedService.title}</h3>
+              <h3 className="font-bold text-sm text-[#1a1c1c]">{selectedService?.title || initialService.title}</h3>
               <p className="text-xs text-[#665d55]">By {vendor.businessName}</p>
               <p className="text-xs text-[#003527] font-semibold mt-1">
                 📅 {bookingDate} • ⏰ {timeSlot}

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Storage } from '../../lib/storage';
 import { useAuth } from '../../lib/authContext';
-import { Star, X, CheckCircle, Sparkles } from 'lucide-react';
+import { Star, X, CheckCircle, Sparkles, AlertCircle } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { validateForm, addReviewSchema } from '../../lib/validationSchemas';
 
 interface AddReviewModalProps {
   vendorId: string;
@@ -26,19 +27,31 @@ export function AddReviewModal({
   const [hoverRating, setHoverRating] = useState(0);
   const [comment, setComment] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!comment.trim()) return;
+
+    // Yup validation
+    const { isValid, errors } = await validateForm(addReviewSchema, {
+      rating,
+      comment,
+    });
+
+    if (!isValid) {
+      setFieldErrors(errors);
+      return;
+    }
+    setFieldErrors({});
 
     Storage.addReview({
       vendorId,
       bookingId,
-      customerId: user.id,
-      customerName: user.name,
-      customerAvatar: user.avatar,
+      customerId: user?.id || 'guest-cust',
+      customerName: user?.name || 'Customer',
+      customerAvatar: user?.avatar,
       rating,
       comment: comment.trim(),
     });
@@ -55,6 +68,7 @@ export function AddReviewModal({
       onClose();
       setSubmitted(false);
       setComment('');
+      setFieldErrors({});
     }, 1200);
   };
 
@@ -114,19 +128,30 @@ export function AddReviewModal({
                 Your Feedback
               </label>
               <textarea
-                required
                 rows={4}
                 value={comment}
-                onChange={(e) => setComment(e.target.value)}
+                onChange={(e) => {
+                  setComment(e.target.value);
+                  if (fieldErrors.comment) setFieldErrors(prev => ({ ...prev, comment: '' }));
+                }}
                 placeholder="Describe the taste, quality, packaging, delivery punctuality, or craftsmanship..."
-                className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] focus:bg-white outline-none transition-all"
+                className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-all ${
+                  fieldErrors.comment
+                    ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                    : 'border-[#e3e2e1] focus:border-[#003527] focus:bg-white'
+                }`}
               />
+              {fieldErrors.comment && (
+                <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {fieldErrors.comment}
+                </p>
+              )}
             </div>
 
             <button
               type="submit"
-              disabled={!comment.trim()}
-              className="w-full py-3 px-4 rounded-full bg-[#003527] hover:bg-[#064e3b] text-white font-bold text-xs shadow-md transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full py-3 px-4 rounded-full bg-[#003527] hover:bg-[#064e3b] text-white font-bold text-xs shadow-md transition-colors flex items-center justify-center gap-2"
             >
               <Sparkles className="w-4 h-4 text-[#ffe088]" />
               <span>Submit Review</span>

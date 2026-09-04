@@ -3,9 +3,10 @@ import { useRouter } from '../lib/navigation';
 import { Storage } from '../lib/storage';
 import { useAuth } from '../lib/authContext';
 import { Vendor } from '../types';
-import { Store, CheckCircle, Sparkles, ShieldCheck, ArrowRight } from 'lucide-react';
+import { Store, CheckCircle, Sparkles, ShieldCheck, ArrowRight, AlertCircle } from 'lucide-react';
 import { PricingCards } from '../components/marketplace/PricingCards';
 import confetti from 'canvas-confetti';
+import { validateForm, becomeSellerSchema } from '../lib/validationSchemas';
 
 export function BecomeSellerPage() {
   const router = useRouter();
@@ -20,13 +21,31 @@ export function BecomeSellerPage() {
   const [description, setDescription] = useState('');
   const [experienceYears, setExperienceYears] = useState(3);
   const [submitting, setSubmitting] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const categories = Storage.getCategories();
   const cities = Storage.getCities();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!businessName.trim()) return;
+
+    // Yup validation
+    const { isValid, errors } = await validateForm(becomeSellerSchema, {
+      businessName,
+      tagline,
+      category,
+      city,
+      locality,
+      startingPrice,
+      description,
+      experienceYears,
+    });
+
+    if (!isValid) {
+      setFieldErrors(errors);
+      return;
+    }
+    setFieldErrors({});
 
     setSubmitting(true);
     const slug = businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
@@ -141,7 +160,7 @@ export function BecomeSellerPage() {
       </div>
 
       {/* Registration Form */}
-      <form onSubmit={handleSubmit} className="bg-white rounded-3xl p-6 sm:p-8 border border-[#e3e2e1] shadow-xs space-y-6">
+      <form onSubmit={handleSubmit} className="bg-white rounded-3xl p-6 sm:p-8 border border-[#e3e2e1] shadow-xs space-y-6" noValidate>
         <div className="space-y-1 pb-3 border-b border-[#f4f3f2]">
           <h2 className="text-lg font-black text-[#1a1c1c] font-['Plus_Jakarta_Sans']">
             Business Details
@@ -156,12 +175,24 @@ export function BecomeSellerPage() {
             </label>
             <input
               type="text"
-              required
               placeholder="e.g. Sugar Bliss Bakery, Hira's Henna Art"
               value={businessName}
-              onChange={(e) => setBusinessName(e.target.value)}
-              className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+              onChange={(e) => {
+                setBusinessName(e.target.value);
+                if (fieldErrors.businessName) setFieldErrors(prev => ({ ...prev, businessName: '' }));
+              }}
+              className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                fieldErrors.businessName
+                  ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                  : 'border-[#e3e2e1] focus:border-[#003527]'
+              }`}
             />
+            {fieldErrors.businessName && (
+              <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {fieldErrors.businessName}
+              </p>
+            )}
           </div>
 
           <div>
@@ -170,8 +201,15 @@ export function BecomeSellerPage() {
             </label>
             <select
               value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none font-semibold text-[#1a1c1c]"
+              onChange={(e) => {
+                setCategory(e.target.value);
+                if (fieldErrors.category) setFieldErrors(prev => ({ ...prev, category: '' }));
+              }}
+              className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none font-semibold text-[#1a1c1c] transition-colors ${
+                fieldErrors.category
+                  ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                  : 'border-[#e3e2e1] focus:border-[#003527]'
+              }`}
             >
               {categories.map((c) => (
                 <option key={c.id} value={c.slug}>
@@ -179,6 +217,12 @@ export function BecomeSellerPage() {
                 </option>
               ))}
             </select>
+            {fieldErrors.category && (
+              <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {fieldErrors.category}
+              </p>
+            )}
           </div>
         </div>
 
@@ -188,12 +232,24 @@ export function BecomeSellerPage() {
           </label>
           <input
             type="text"
-            required
             placeholder="e.g. Custom buttercream vintage cakes & gourmet brownies crafted fresh in DHA"
             value={tagline}
-            onChange={(e) => setTagline(e.target.value)}
-            className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+            onChange={(e) => {
+              setTagline(e.target.value);
+              if (fieldErrors.tagline) setFieldErrors(prev => ({ ...prev, tagline: '' }));
+            }}
+            className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+              fieldErrors.tagline
+                ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                : 'border-[#e3e2e1] focus:border-[#003527]'
+            }`}
           />
+          {fieldErrors.tagline && (
+            <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+              <AlertCircle className="w-3 h-3" />
+              {fieldErrors.tagline}
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -203,8 +259,15 @@ export function BecomeSellerPage() {
             </label>
             <select
               value={city}
-              onChange={(e) => setCity(e.target.value)}
-              className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none font-semibold text-[#1a1c1c]"
+              onChange={(e) => {
+                setCity(e.target.value);
+                if (fieldErrors.city) setFieldErrors(prev => ({ ...prev, city: '' }));
+              }}
+              className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none font-semibold text-[#1a1c1c] transition-colors ${
+                fieldErrors.city
+                  ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                  : 'border-[#e3e2e1] focus:border-[#003527]'
+              }`}
             >
               {cities.map((c) => (
                 <option key={c.id} value={c.name}>
@@ -212,6 +275,12 @@ export function BecomeSellerPage() {
                 </option>
               ))}
             </select>
+            {fieldErrors.city && (
+              <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {fieldErrors.city}
+              </p>
+            )}
           </div>
 
           <div>
@@ -220,12 +289,24 @@ export function BecomeSellerPage() {
             </label>
             <input
               type="text"
-              required
               placeholder="e.g. DHA Phase 5, Clifton, F-7"
               value={locality}
-              onChange={(e) => setLocality(e.target.value)}
-              className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+              onChange={(e) => {
+                setLocality(e.target.value);
+                if (fieldErrors.locality) setFieldErrors(prev => ({ ...prev, locality: '' }));
+              }}
+              className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                fieldErrors.locality
+                  ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                  : 'border-[#e3e2e1] focus:border-[#003527]'
+              }`}
             />
+            {fieldErrors.locality && (
+              <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {fieldErrors.locality}
+              </p>
+            )}
           </div>
 
           <div>
@@ -234,12 +315,24 @@ export function BecomeSellerPage() {
             </label>
             <input
               type="number"
-              required
               step="500"
               value={startingPrice}
-              onChange={(e) => setStartingPrice(Number(e.target.value))}
-              className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none font-semibold text-[#1a1c1c]"
+              onChange={(e) => {
+                setStartingPrice(Number(e.target.value));
+                if (fieldErrors.startingPrice) setFieldErrors(prev => ({ ...prev, startingPrice: '' }));
+              }}
+              className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none font-semibold text-[#1a1c1c] transition-colors ${
+                fieldErrors.startingPrice
+                  ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                  : 'border-[#e3e2e1] focus:border-[#003527]'
+              }`}
             />
+            {fieldErrors.startingPrice && (
+              <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {fieldErrors.startingPrice}
+              </p>
+            )}
           </div>
         </div>
 
@@ -249,12 +342,24 @@ export function BecomeSellerPage() {
           </label>
           <textarea
             rows={4}
-            required
             placeholder="Tell customers about your kitchen/studio setup, hygiene standards, experience, and why they should choose your home business..."
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl focus:border-[#003527] outline-none"
+            onChange={(e) => {
+              setDescription(e.target.value);
+              if (fieldErrors.description) setFieldErrors(prev => ({ ...prev, description: '' }));
+            }}
+            className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+              fieldErrors.description
+                ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                : 'border-[#e3e2e1] focus:border-[#003527]'
+            }`}
           />
+          {fieldErrors.description && (
+            <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+              <AlertCircle className="w-3 h-3" />
+              {fieldErrors.description}
+            </p>
+          )}
         </div>
 
         {/* Submit */}

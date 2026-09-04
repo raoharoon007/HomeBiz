@@ -39,20 +39,29 @@ export function Navbar() {
   const notifications = user ? Storage.getNotifications(user.id) : [];
   const unreadNotifs = notifications.filter((n) => !n.read).length;
 
+  const userVendor = user
+    ? Storage.getVendors().find((v) => v.id === user.sellerProfileId || v.userId === user.id)
+    : null;
+
   const conversations = Storage.getConversations().filter((conversation) => {
     if (!user) return false;
     if (role === 'SELLER') {
-      return conversation.vendorId === user.sellerProfileId || conversation.vendorId === user.id;
+      return (
+        conversation.vendorId === user.sellerProfileId ||
+        conversation.vendorId === user.id ||
+        Boolean(userVendor && conversation.vendorId === userVendor.id) ||
+        Boolean(conversation.participants?.some((p) => p.id === user.id || (userVendor && p.id === userVendor.id)))
+      );
     }
     if (role === 'ADMIN') {
       return true;
     }
-    return conversation.customerId === user.id;
+    return conversation.customerId === user.id || Boolean(conversation.participants?.some((p) => p.id === user.id));
   });
 
   const unreadMessagesCount = user
     ? conversations.reduce((acc, c) => {
-      if (role === 'SELLER' && (c.vendorId === user.sellerProfileId || c.vendorId === user.id)) {
+      if (role === 'SELLER') {
         return acc + (c.unreadCountVendor || 0);
       }
       if (c.customerId === user.id) {
@@ -249,9 +258,10 @@ export function Navbar() {
                         Dashboard
                       </Link>
                       <button
-                        onClick={() => {
-                          logout();
+                        onClick={async () => {
                           setUserMenuOpen(false);
+                          await logout();
+                          router.push('/auth/login');
                         }}
                         className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-[#ba1a1a] hover:bg-[#f4f3f2]"
                       >
@@ -400,9 +410,10 @@ export function Navbar() {
                     Dashboard
                   </Link>
                   <button
-                    onClick={() => {
-                      logout();
+                    onClick={async () => {
                       setMobileMenuOpen(false);
+                      await logout();
+                      router.push('/auth/login');
                     }}
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-[#ba1a1a] hover:bg-[#f4f3f2]"
                   >

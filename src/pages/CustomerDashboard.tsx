@@ -20,8 +20,10 @@ import {
   Sparkles,
   Camera,
   Save,
+  AlertCircle,
 } from 'lucide-react';
 import { uploadImageToStorage } from '../lib/supabaseStorage';
+import { validateForm, profileSettingsSchema } from '../lib/validationSchemas';
 
 export function CustomerDashboard() {
   useStorageSubscription();
@@ -31,8 +33,14 @@ export function CustomerDashboard() {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [settingsForm, setSettingsForm] = useState({ name: '', phone: '', city: '', address: '' });
+  const [settingsForm, setSettingsForm] = useState({
+    name: user?.name || '',
+    phone: user?.phone || '',
+    city: user?.city || 'Lahore',
+    address: user?.address || '',
+  });
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [settingsErrors, setSettingsErrors] = useState<Record<string, string>>({});
 
   // Profile picture handler with Supabase Storage
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -51,13 +59,23 @@ export function CustomerDashboard() {
   };
 
   // Settings save handler
-  const handleSettingsSave = () => {
-    const updates: Record<string, string> = {};
-    if (settingsForm.name.trim()) updates.name = settingsForm.name.trim();
-    if (settingsForm.phone.trim()) updates.phone = settingsForm.phone.trim();
-    if (settingsForm.city.trim()) updates.city = settingsForm.city.trim();
-    if (settingsForm.address.trim()) updates.address = settingsForm.address.trim();
-    if (Object.keys(updates).length > 0) updateProfile(updates);
+  const handleSettingsSave = async () => {
+    const payload = {
+      name: settingsForm.name.trim() || (user?.name ?? ''),
+      phone: settingsForm.phone.trim(),
+      city: settingsForm.city.trim() || (user?.city ?? 'Lahore'),
+      address: settingsForm.address.trim(),
+    };
+
+    // Yup validation
+    const { isValid, errors } = await validateForm(profileSettingsSchema, payload);
+    if (!isValid) {
+      setSettingsErrors(errors);
+      return;
+    }
+    setSettingsErrors({});
+
+    updateProfile(payload);
     setSettingsSaved(true);
     setTimeout(() => setSettingsSaved(false), 3000);
   };
@@ -80,10 +98,25 @@ export function CustomerDashboard() {
     vendorName: '',
   });
 
+  const customerConversations = user
+    ? Storage.getConversations().filter((c) => c.customerId === user.id || Boolean(c.participants?.some((p) => p.id === user.id)))
+    : [];
+  const unreadCustomerMessages = customerConversations.reduce((acc, c) => acc + (c.unreadCountCustomer || 0), 0);
+
+  const handleChatWithVendor = (vendorId: string, vendorName: string, bookingRef?: string) => {
+    if (!user) return;
+    const conv = Storage.getOrCreateConversation(user.id, vendorId, {
+      type: 'BOOKING',
+      id: bookingRef || vendorId,
+      title: bookingRef ? `Order #${bookingRef}` : `Order with ${vendorName}`,
+    });
+    router.push(`/customer/dashboard/messages?convId=${conv.id}`);
+  };
+
   const navTabs = [
     { id: 'bookings', label: 'My Bookings', path: '/customer/dashboard/bookings', icon: Calendar, badge: user ? Storage.getBookings().filter((b) => b.customerId === user.id).length : 0 },
     { id: 'requests', label: 'My Custom Requests', path: '/customer/dashboard/requests', icon: FileText, badge: user ? Storage.getRequests().filter((r) => r.customerId === user.id).length : 0 },
-    { id: 'messages', label: 'Messages', path: '/customer/dashboard/messages', icon: MessageSquare },
+    { id: 'messages', label: 'Messages', path: '/customer/dashboard/messages', icon: MessageSquare, badge: unreadCustomerMessages > 0 ? unreadCustomerMessages : undefined },
     { id: 'favorites', label: 'Saved Creators', path: '/customer/dashboard/favorites', icon: Heart, badge: user ? Storage.getFavorites(user.id).length : 0 },
     { id: 'settings', label: 'Profile Settings', path: '/customer/dashboard/settings', icon: Settings },
   ];
@@ -268,12 +301,14 @@ export function CustomerDashboard() {
                             <span>Review</span>
                           </button>
 
-                          <Link
-                            href="/customer/dashboard/messages"
-                            className="px-3 py-1.5 rounded-full bg-[#003527] text-white hover:bg-[#064e3b] text-xs font-bold"
+                          <button
+                            type="button"
+                            onClick={() => handleChatWithVendor(booking.vendorId, booking.vendorName, booking.bookingNumber)}
+                            className="px-3 py-1.5 rounded-full bg-[#003527] text-white hover:bg-[#064e3b] text-xs font-bold flex items-center gap-1 cursor-pointer"
                           >
-                            Chat
-                          </Link>
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            <span>Chat</span>
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -430,9 +465,22 @@ export function CustomerDashboard() {
                     type="text"
                     placeholder={user.name}
                     value={settingsForm.name}
-                    onChange={(e) => setSettingsForm((p) => ({ ...p, name: e.target.value }))}
-                    className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl outline-none focus:border-[#003527] transition-colors"
+                    onChange={(e) => {
+                      setSettingsForm((p) => ({ ...p, name: e.target.value }));
+                      if (settingsErrors.name) setSettingsErrors(prev => ({ ...prev, name: '' }));
+                    }}
+                    className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                      settingsErrors.name
+                        ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                        : 'border-[#e3e2e1] focus:border-[#003527]'
+                    }`}
                   />
+                  {settingsErrors.name && (
+                    <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {settingsErrors.name}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-[#1a1c1c] uppercase tracking-wider mb-1">
@@ -453,9 +501,22 @@ export function CustomerDashboard() {
                     type="tel"
                     placeholder={user.phone || '03XX-XXXXXXX'}
                     value={settingsForm.phone}
-                    onChange={(e) => setSettingsForm((p) => ({ ...p, phone: e.target.value }))}
-                    className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl outline-none focus:border-[#003527] transition-colors"
+                    onChange={(e) => {
+                      setSettingsForm((p) => ({ ...p, phone: e.target.value }));
+                      if (settingsErrors.phone) setSettingsErrors(prev => ({ ...prev, phone: '' }));
+                    }}
+                    className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                      settingsErrors.phone
+                        ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                        : 'border-[#e3e2e1] focus:border-[#003527]'
+                    }`}
                   />
+                  {settingsErrors.phone && (
+                    <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {settingsErrors.phone}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-[#1a1c1c] uppercase tracking-wider mb-1">
@@ -465,9 +526,22 @@ export function CustomerDashboard() {
                     type="text"
                     placeholder={user.city}
                     value={settingsForm.city}
-                    onChange={(e) => setSettingsForm((p) => ({ ...p, city: e.target.value }))}
-                    className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl outline-none focus:border-[#003527] transition-colors"
+                    onChange={(e) => {
+                      setSettingsForm((p) => ({ ...p, city: e.target.value }));
+                      if (settingsErrors.city) setSettingsErrors(prev => ({ ...prev, city: '' }));
+                    }}
+                    className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                      settingsErrors.city
+                        ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                        : 'border-[#e3e2e1] focus:border-[#003527]'
+                    }`}
                   />
+                  {settingsErrors.city && (
+                    <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {settingsErrors.city}
+                    </p>
+                  )}
                 </div>
               </div>
               <div>
@@ -478,9 +552,22 @@ export function CustomerDashboard() {
                   type="text"
                   placeholder={user.address || 'Street, Area, City'}
                   value={settingsForm.address}
-                  onChange={(e) => setSettingsForm((p) => ({ ...p, address: e.target.value }))}
-                  className="w-full text-xs p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl outline-none focus:border-[#003527] transition-colors"
+                  onChange={(e) => {
+                    setSettingsForm((p) => ({ ...p, address: e.target.value }));
+                    if (settingsErrors.address) setSettingsErrors(prev => ({ ...prev, address: '' }));
+                  }}
+                  className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                    settingsErrors.address
+                      ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                      : 'border-[#e3e2e1] focus:border-[#003527]'
+                  }`}
                 />
+                {settingsErrors.address && (
+                  <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    {settingsErrors.address}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <button

@@ -58,7 +58,8 @@ export function VendorProfilePage() {
       router.push('/auth/login');
       return;
     }
-    router.push(`/booking/${vendor.id}?serviceId=${serviceId}`);
+    const targetService = serviceId || vendor.services?.[0]?.id || 'custom-order';
+    router.push(`/booking/${vendor.id}?serviceId=${targetService}`);
   };
 
   const handleShare = () => {
@@ -420,7 +421,7 @@ export function VendorProfilePage() {
             </div>
 
             <button
-              onClick={() => handleBookService(vendor.services[0]?.id || '')}
+              onClick={() => handleBookService(vendor.services?.[0]?.id || 'custom-order')}
               className="w-full py-3 rounded-full bg-[#003527] hover:bg-[#064e3b] text-white font-bold text-xs shadow-md transition-colors flex items-center justify-center gap-2"
             >
               <span>Instant Book a Slot</span>

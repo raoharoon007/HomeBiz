@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { usePathname, Link } from '../lib/navigation';
+import { usePathname, useRouter, Link } from '../lib/navigation';
 import { Storage, useStorageSubscription } from '../lib/storage';
 import { useAuth } from '../lib/authContext';
 import { ChatWindow } from '../components/marketplace/ChatWindow';
@@ -24,13 +24,16 @@ import {
   Check,
   UploadCloud,
   Loader,
+  AlertCircle,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { uploadImageToStorage } from '../lib/supabaseStorage';
+import { validateForm, sendQuoteSchema, createServicePackageSchema } from '../lib/validationSchemas';
 
 export function SellerDashboard() {
   useStorageSubscription();
   const pathname = usePathname();
+  const router = useRouter();
   const { user } = useAuth();
 
   if (!user) {
@@ -74,8 +77,26 @@ export function SellerDashboard() {
 
   // Find vendor profile
   const vendor =
-    Storage.getVendors().find((v) => v.id === user.sellerProfileId || v.userId === user.id) ||
-    Storage.getVendors()[0];
+    (user && Storage.getVendors().find((v) => v.id === user.sellerProfileId || v.userId === user.id)) ||
+    Storage.getVendors()[0] ||
+    null;
+
+  if (!vendor) {
+    return (
+      <div className="max-w-md mx-auto my-16 text-center bg-white rounded-3xl p-8 border border-[#e3e2e1] space-y-4 shadow-sm">
+        <h2 className="text-xl font-bold text-[#1a1c1c]">No Storefront Found</h2>
+        <p className="text-xs text-[#665d55]">We couldn't locate your seller storefront profile. Set one up to get started!</p>
+        <div className="pt-2 flex justify-center gap-3">
+          <Link href="/become-a-seller" className="px-6 py-2.5 rounded-full bg-[#003527] text-white text-xs font-bold shadow-xs hover:bg-[#064e3b]">
+            Create Storefront
+          </Link>
+          <Link href="/auth/login" className="px-6 py-2.5 rounded-full bg-[#faf9f8] border border-[#e3e2e1] text-[#003527] text-xs font-bold hover:bg-[#f4f3f2]">
+            Sign In
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   // Tab detection
   let activeTab = 'overview';
@@ -92,8 +113,27 @@ export function SellerDashboard() {
   const bookings = Storage.getBookings().filter((b) => b.vendorId === vendor.id);
   const reviews = Storage.getReviews(vendor.id);
   const broadcastRequests = Storage.getRequests().filter(
-    (r) => r.category === vendor.category || r.city.toLowerCase() === vendor.city.toLowerCase()
+    (r) => r.category === vendor.category || (r.city && vendor.city && r.city.toLowerCase() === vendor.city.toLowerCase())
   );
+
+  // Unread messages count for seller
+  const sellerConversations = Storage.getConversations().filter(
+    (c) =>
+      c.vendorId === vendor.id ||
+      c.vendorId === user.sellerProfileId ||
+      c.vendorId === user.id ||
+      Boolean(c.participants?.some((p) => p.id === user.id || p.id === vendor.id))
+  );
+  const unreadVendorMessages = sellerConversations.reduce((acc, c) => acc + (c.unreadCountVendor || 0), 0);
+
+  const handleChatWithCustomer = (customerId: string, customerName: string, refTitle?: string) => {
+    const conv = Storage.getOrCreateConversation(customerId, vendor.id, {
+      type: 'BOOKING',
+      id: refTitle || vendor.id,
+      title: refTitle || `Order inquiry with ${customerName}`,
+    });
+    router.push(`/seller/dashboard/messages?convId=${conv.id}`);
+  };
 
   // Quote creation modal state
   const [selectedReqForQuote, setSelectedReqForQuote] = useState<any | null>(null);
@@ -105,6 +145,7 @@ export function SellerDashboard() {
     { name: 'Core custom service & labor', cost: 10000 },
     { name: 'Premium ingredients / materials', cost: 2000 },
   ]);
+  const [quoteErrors, setQuoteErrors] = useState<Record<string, string>>({});
 
   // Reply to review state
   const [replyingReviewId, setReplyingReviewId] = useState<string | null>(null);
@@ -118,6 +159,7 @@ export function SellerDashboard() {
   const [newSrvNotice, setNewSrvNotice] = useState('48 hours notice');
   const [newSrvImage, setNewSrvImage] = useState<string | null>(null);
   const [uploadingSrvImg, setUploadingSrvImg] = useState(false);
+  const [serviceErrors, setServiceErrors] = useState<Record<string, string>>({});
   const srvImgRef = useRef<HTMLInputElement>(null);
 
   const totalEarnings = bookings
@@ -132,18 +174,32 @@ export function SellerDashboard() {
   const navTabs = [
     { id: 'overview', label: 'Overview', path: '/seller/dashboard/overview', icon: LayoutDashboard },
     { id: 'profile', label: 'Storefront Profile', path: '/seller/dashboard/profile', icon: Store },
-    { id: 'services', label: 'Services & Packages', path: '/seller/dashboard/services', icon: MenuSquare, badge: vendor.services.length },
+    { id: 'services', label: 'Services & Packages', path: '/seller/dashboard/services', icon: MenuSquare, badge: vendor.services?.length || 0 },
     { id: 'bookings', label: 'Customer Orders', path: '/seller/dashboard/bookings', icon: Calendar, badge: bookings.length },
     { id: 'requests', label: 'Broadcast Inquiries', path: '/seller/dashboard/requests', icon: FileSpreadsheet, badge: broadcastRequests.length },
-    { id: 'messages', label: 'Live Messages', path: '/seller/dashboard/messages', icon: MessageSquare },
+    { id: 'messages', label: 'Live Messages', path: '/seller/dashboard/messages', icon: MessageSquare, badge: unreadVendorMessages > 0 ? unreadVendorMessages : undefined },
     { id: 'reviews', label: 'Customer Reviews', path: '/seller/dashboard/reviews', icon: Star, badge: reviews.length },
     { id: 'plan', label: 'My Plan & Billing', path: '/seller/dashboard/plan', icon: DollarSign },
     { id: 'earnings', label: 'Earnings & Payouts', path: '/seller/dashboard/earnings', icon: Wallet },
   ];
 
-  const handleSendQuote = (e: React.FormEvent) => {
+  const handleSendQuote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedReqForQuote) return;
+
+    // Yup validation
+    const { isValid, errors } = await validateForm(sendQuoteSchema, {
+      message: quoteMessage,
+      price: quotePrice,
+      deliveryFee: quoteDeliveryFee,
+      completionTime: quoteTime,
+    });
+
+    if (!isValid) {
+      setQuoteErrors(errors);
+      return;
+    }
+    setQuoteErrors({});
 
     const newQuote: Quote = {
       id: `q-${Date.now()}`,
@@ -169,6 +225,7 @@ export function SellerDashboard() {
 
     Storage.submitQuote(newQuote);
     setSelectedReqForQuote(null);
+    setQuoteErrors({});
     confetti({ particleCount: 80, spread: 60 });
   };
 
@@ -179,9 +236,22 @@ export function SellerDashboard() {
     setReplyText('');
   };
 
-  const handleCreateService = (e: React.FormEvent) => {
+  const handleCreateService = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newSrvTitle.trim()) return;
+
+    // Yup validation
+    const { isValid, errors } = await validateForm(createServicePackageSchema, {
+      title: newSrvTitle,
+      description: newSrvDesc,
+      price: newSrvPrice,
+      noticePeriod: newSrvNotice,
+    });
+
+    if (!isValid) {
+      setServiceErrors(errors);
+      return;
+    }
+    setServiceErrors({});
 
     const newService: ServiceItem = {
       id: `srv-${Date.now()}`,
@@ -203,6 +273,7 @@ export function SellerDashboard() {
     setNewSrvTitle('');
     setNewSrvDesc('');
     setNewSrvImage(null);
+    setServiceErrors({});
     confetti({ particleCount: 50, spread: 50 });
   };
 
@@ -549,12 +620,14 @@ export function SellerDashboard() {
                             Mark Completed
                           </button>
                         )}
-                        <Link
-                          href="/seller/dashboard/messages"
-                          className="px-3 py-1.5 rounded-full border border-stone-300 text-xs font-bold"
+                        <button
+                          type="button"
+                          onClick={() => handleChatWithCustomer(booking.customerId, booking.customerName, `Order #${booking.bookingNumber}`)}
+                          className="px-3 py-1.5 rounded-full border border-[#003527] text-[#003527] hover:bg-[#003527] hover:text-white transition-colors text-xs font-bold flex items-center gap-1 cursor-pointer"
                         >
-                          Message
-                        </Link>
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          <span>Message Customer</span>
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -570,7 +643,7 @@ export function SellerDashboard() {
                 <h2 className="text-base font-bold text-[#1a1c1c]">
                   Live Broadcast Inquiries in {vendor.city}
                 </h2>
-                <p className="text-xs text-[#665d55]">Send itemized quotes to win custom orders.</p>
+                <p className="text-xs text-[#665d55]">Send itemized quotes or message customers directly to win custom orders.</p>
               </div>
 
               <div className="space-y-4">
@@ -599,21 +672,32 @@ export function SellerDashboard() {
                       <span>👥 {req.guestCountOrQuantity}</span>
                     </div>
 
-                    <div className="pt-2 border-t border-[#f4f3f2] flex items-center justify-between">
+                    <div className="pt-2 border-t border-[#f4f3f2] flex items-center justify-between flex-wrap gap-2">
                       <span className="text-xs text-[#665d55]">{req.quoteCount} quotes submitted so far</span>
-                      <button
-                        onClick={() => {
-                          setSelectedReqForQuote(req);
-                          setQuotePrice(req.budget);
-                          setQuoteMessage(
-                            `Salam! We can prepare this bespoke order fresh using premium ingredients and deliver on ${req.preferredDate}.`
-                          );
-                        }}
-                        className="px-4 py-2 rounded-full bg-[#003527] hover:bg-[#064e3b] text-white text-xs font-bold shadow-xs flex items-center gap-1.5"
-                      >
-                        <Send className="w-3.5 h-3.5 text-[#ffe088]" />
-                        <span>Send Itemized Quote</span>
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleChatWithCustomer(req.customerId, req.customerName, `Inquiry: ${req.serviceNeeded}`)}
+                          className="px-3 py-2 rounded-full border border-stone-300 hover:border-[#003527] text-[#404944] hover:text-[#003527] text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          <span>Chat with Customer</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedReqForQuote(req);
+                            setQuotePrice(req.budget);
+                            setQuoteMessage(
+                              `Salam! We can prepare this bespoke order fresh using premium ingredients and deliver on ${req.preferredDate}.`
+                            );
+                          }}
+                          className="px-4 py-2 rounded-full bg-[#003527] hover:bg-[#064e3b] text-white text-xs font-bold shadow-xs flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Send className="w-3.5 h-3.5 text-[#ffe088]" />
+                          <span>Send Itemized Quote</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -948,18 +1032,30 @@ export function SellerDashboard() {
               </button>
             </div>
 
-            <form onSubmit={handleSendQuote} className="space-y-4 text-xs">
+            <form onSubmit={handleSendQuote} className="space-y-4 text-xs" noValidate>
               <div>
                 <label className="block font-bold text-[#1a1c1c] uppercase tracking-wider mb-1">
                   Personalized Pitch & Description
                 </label>
                 <textarea
                   rows={3}
-                  required
                   value={quoteMessage}
-                  onChange={(e) => setQuoteMessage(e.target.value)}
-                  className="w-full p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl outline-none"
+                  onChange={(e) => {
+                    setQuoteMessage(e.target.value);
+                    if (quoteErrors.message) setQuoteErrors(prev => ({ ...prev, message: '' }));
+                  }}
+                  className={`w-full p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                    quoteErrors.message
+                      ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                      : 'border-[#e3e2e1]'
+                  }`}
                 />
+                {quoteErrors.message && (
+                  <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    {quoteErrors.message}
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -969,11 +1065,23 @@ export function SellerDashboard() {
                   </label>
                   <input
                     type="number"
-                    required
                     value={quotePrice}
-                    onChange={(e) => setQuotePrice(Number(e.target.value))}
-                    className="w-full p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl font-bold text-[#003527] outline-none"
+                    onChange={(e) => {
+                      setQuotePrice(Number(e.target.value));
+                      if (quoteErrors.price) setQuoteErrors(prev => ({ ...prev, price: '' }));
+                    }}
+                    className={`w-full p-3 bg-[#faf9f8] border rounded-2xl font-bold text-[#003527] outline-none transition-colors ${
+                      quoteErrors.price
+                        ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                        : 'border-[#e3e2e1]'
+                    }`}
                   />
+                  {quoteErrors.price && (
+                    <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {quoteErrors.price}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -982,11 +1090,23 @@ export function SellerDashboard() {
                   </label>
                   <input
                     type="number"
-                    required
                     value={quoteDeliveryFee}
-                    onChange={(e) => setQuoteDeliveryFee(Number(e.target.value))}
-                    className="w-full p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl font-bold text-[#003527] outline-none"
+                    onChange={(e) => {
+                      setQuoteDeliveryFee(Number(e.target.value));
+                      if (quoteErrors.deliveryFee) setQuoteErrors(prev => ({ ...prev, deliveryFee: '' }));
+                    }}
+                    className={`w-full p-3 bg-[#faf9f8] border rounded-2xl font-bold text-[#003527] outline-none transition-colors ${
+                      quoteErrors.deliveryFee
+                        ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                        : 'border-[#e3e2e1]'
+                    }`}
                   />
+                  {quoteErrors.deliveryFee && (
+                    <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {quoteErrors.deliveryFee}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -996,12 +1116,24 @@ export function SellerDashboard() {
                 </label>
                 <input
                   type="text"
-                  required
                   value={quoteTime}
-                  onChange={(e) => setQuoteTime(e.target.value)}
+                  onChange={(e) => {
+                    setQuoteTime(e.target.value);
+                    if (quoteErrors.completionTime) setQuoteErrors(prev => ({ ...prev, completionTime: '' }));
+                  }}
                   placeholder="e.g. 24-48 hours notice / Ready on Friday 4 PM"
-                  className="w-full p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl outline-none"
+                  className={`w-full p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                    quoteErrors.completionTime
+                      ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                      : 'border-[#e3e2e1]'
+                  }`}
                 />
+                {quoteErrors.completionTime && (
+                  <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    {quoteErrors.completionTime}
+                  </p>
+                )}
               </div>
 
               <div className="p-3 bg-[#faf9f8] rounded-2xl border border-[#e3e2e1] flex items-center justify-between">
@@ -1034,19 +1166,31 @@ export function SellerDashboard() {
               </button>
             </div>
 
-            <form onSubmit={handleCreateService} className="space-y-4 text-xs">
+            <form onSubmit={handleCreateService} className="space-y-4 text-xs" noValidate>
               <div>
                 <label className="block font-bold text-[#1a1c1c] uppercase tracking-wider mb-1">
                   Package Title
                 </label>
                 <input
                   type="text"
-                  required
                   placeholder="e.g. 2-Pound Korean Bento Cake"
                   value={newSrvTitle}
-                  onChange={(e) => setNewSrvTitle(e.target.value)}
-                  className="w-full p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl outline-none"
+                  onChange={(e) => {
+                    setNewSrvTitle(e.target.value);
+                    if (serviceErrors.title) setServiceErrors(prev => ({ ...prev, title: '' }));
+                  }}
+                  className={`w-full p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                    serviceErrors.title
+                      ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                      : 'border-[#e3e2e1]'
+                  }`}
                 />
+                {serviceErrors.title && (
+                  <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    {serviceErrors.title}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -1055,12 +1199,24 @@ export function SellerDashboard() {
                 </label>
                 <textarea
                   rows={3}
-                  required
                   placeholder="Details of flavor, portions, presentation..."
                   value={newSrvDesc}
-                  onChange={(e) => setNewSrvDesc(e.target.value)}
-                  className="w-full p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl outline-none"
+                  onChange={(e) => {
+                    setNewSrvDesc(e.target.value);
+                    if (serviceErrors.description) setServiceErrors(prev => ({ ...prev, description: '' }));
+                  }}
+                  className={`w-full p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                    serviceErrors.description
+                      ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                      : 'border-[#e3e2e1]'
+                  }`}
                 />
+                {serviceErrors.description && (
+                  <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    {serviceErrors.description}
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1070,11 +1226,23 @@ export function SellerDashboard() {
                   </label>
                   <input
                     type="number"
-                    required
                     value={newSrvPrice}
-                    onChange={(e) => setNewSrvPrice(Number(e.target.value))}
-                    className="w-full p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl outline-none font-bold text-[#003527]"
+                    onChange={(e) => {
+                      setNewSrvPrice(Number(e.target.value));
+                      if (serviceErrors.price) setServiceErrors(prev => ({ ...prev, price: '' }));
+                    }}
+                    className={`w-full p-3 bg-[#faf9f8] border rounded-2xl outline-none font-bold text-[#003527] transition-colors ${
+                      serviceErrors.price
+                        ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                        : 'border-[#e3e2e1]'
+                    }`}
                   />
+                  {serviceErrors.price && (
+                    <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {serviceErrors.price}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -1083,11 +1251,23 @@ export function SellerDashboard() {
                   </label>
                   <input
                     type="text"
-                    required
                     value={newSrvNotice}
-                    onChange={(e) => setNewSrvNotice(e.target.value)}
-                    className="w-full p-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl outline-none"
+                    onChange={(e) => {
+                      setNewSrvNotice(e.target.value);
+                      if (serviceErrors.noticePeriod) setServiceErrors(prev => ({ ...prev, noticePeriod: '' }));
+                    }}
+                    className={`w-full p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                      serviceErrors.noticePeriod
+                        ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                        : 'border-[#e3e2e1]'
+                    }`}
                   />
+                  {serviceErrors.noticePeriod && (
+                    <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {serviceErrors.noticePeriod}
+                    </p>
+                  )}
                 </div>
               </div>
 
