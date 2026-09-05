@@ -217,21 +217,22 @@ export const addReviewSchema = yup.object().shape({
 
 // 8. Booking Details Form (Step 3 in BookingPage)
 export const bookingDetailsSchema = yup.object().shape({
-  deliveryAddress: yup
-    .string()
-    .trim()
-    .required('Delivery / street address is required')
-    .min(6, 'Please provide a complete address with house/street details'),
-  bookingDate: yup
-    .string()
-    .required('Date is required'),
-  timeSlot: yup
-    .string()
-    .required('Time slot is required'),
   deliveryType: yup
     .string()
     .oneOf(['DELIVERY', 'PICKUP', 'AT_HOME'], 'Valid delivery method required')
     .required('Delivery type is required'),
+  deliveryAddress: yup.string().when('deliveryType', {
+    is: (val: string) => val === 'DELIVERY' || val === 'AT_HOME',
+    then: (schema) =>
+      schema
+        .trim()
+        .required('Delivery / street address is required')
+        .min(5, 'Please provide a complete street address (minimum 5 characters)'),
+    otherwise: (schema) => schema.optional(),
+  }),
+  bookingDate: yup.string().optional(),
+  timeSlot: yup.string().optional(),
+  notes: yup.string().trim().optional(),
 });
 
 // 9. Seller: Create Service Package

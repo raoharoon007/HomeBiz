@@ -228,7 +228,17 @@ export function BookingPage() {
             const isCurrent = step === stepNum;
 
             return (
-              <div key={lbl} className="flex items-center gap-2 flex-shrink-0">
+              <div
+                key={lbl}
+                onClick={() => {
+                  if (stepNum < step && step !== 6) {
+                    setStep(stepNum);
+                  }
+                }}
+                className={`flex items-center gap-2 flex-shrink-0 ${
+                  stepNum < step && step !== 6 ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''
+                }`}
+              >
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-colors ${isDone
                     ? 'bg-[#003527] text-white'
@@ -452,32 +462,45 @@ export function BookingPage() {
             </div>
           </div>
 
-          {/* Address */}
-          <div>
-            <label className="block text-xs font-bold text-[#1a1c1c] uppercase tracking-wider mb-1">
-              Full Street Address & Landmark
-            </label>
-            <input
-              type="text"
-              value={deliveryAddress}
-              onChange={(e) => {
-                setDeliveryAddress(e.target.value);
-                if (deliveryErrors.deliveryAddress) setDeliveryErrors(prev => ({ ...prev, deliveryAddress: '' }));
-              }}
-              placeholder="e.g. House 142, Street 7, Phase 5 DHA, Lahore"
-              className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
-                deliveryErrors.deliveryAddress
-                  ? 'border-red-500 focus:border-red-600 bg-red-50/30'
-                  : 'border-[#e3e2e1] focus:border-[#003527]'
-              }`}
-            />
-            {deliveryErrors.deliveryAddress && (
-              <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
-                <AlertCircle className="w-3 h-3" />
-                {deliveryErrors.deliveryAddress}
-              </p>
-            )}
-          </div>
+          {/* Address or Pickup info */}
+          {deliveryType === 'PICKUP' ? (
+            <div className="p-4 bg-[#003527]/5 border border-[#003527]/20 rounded-2xl flex items-start gap-3">
+              <MapPin className="w-5 h-5 text-[#003527] shrink-0 mt-0.5" />
+              <div className="text-xs text-[#003527]">
+                <strong className="block font-bold mb-0.5">Self Pickup from Creator Studio / Kitchen</strong>
+                <p className="text-[#404944]">
+                  You will collect this order directly from <strong>{vendor.businessName}</strong> in{' '}
+                  {vendor.locality ? `${vendor.locality}, ${vendor.city}` : vendor.city || 'the designated studio area'}. Exact pickup directions and contact will be provided upon confirmation.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-bold text-[#1a1c1c] uppercase tracking-wider mb-1">
+                Full Street Address & Landmark <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={deliveryAddress}
+                onChange={(e) => {
+                  setDeliveryAddress(e.target.value);
+                  if (deliveryErrors.deliveryAddress) setDeliveryErrors(prev => ({ ...prev, deliveryAddress: '' }));
+                }}
+                placeholder="e.g. House 142, Street 7, Phase 5 DHA, Lahore"
+                className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none transition-colors ${
+                  deliveryErrors.deliveryAddress
+                    ? 'border-red-500 focus:border-red-600 bg-red-50/30'
+                    : 'border-[#e3e2e1] focus:border-[#003527]'
+                }`}
+              />
+              {deliveryErrors.deliveryAddress && (
+                <p className="mt-1 text-xs text-red-600 font-medium flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {deliveryErrors.deliveryAddress}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Custom Notes */}
           <div>
@@ -506,28 +529,51 @@ export function BookingPage() {
             )}
           </div>
 
+          {/* Global error banner if anything fails */}
+          {Object.keys(deliveryErrors).length > 0 && (
+            <div className="p-3 rounded-2xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+              <span>Please review: {Object.values(deliveryErrors).filter(Boolean).join(', ')}</span>
+            </div>
+          )}
+
           <div className="flex items-center justify-between pt-4">
             <button
+              type="button"
               onClick={() => setStep(2)}
-              className="px-4 py-2.5 rounded-full border border-stone-300 text-xs font-bold text-[#404944]"
+              className="px-4 py-2.5 rounded-full border border-stone-300 text-xs font-bold text-[#404944] hover:bg-stone-50 transition-colors"
             >
               Back
             </button>
             <button
+              type="button"
+              id="review-order-btn"
               onClick={async () => {
+                const finalAddress = deliveryType === 'PICKUP'
+                  ? (deliveryAddress.trim() || `Self Pickup from ${vendor.businessName}`)
+                  : deliveryAddress.trim();
+
                 const { isValid, errors } = await validateForm(bookingDetailsSchema, {
                   deliveryType,
-                  deliveryAddress,
+                  deliveryAddress: finalAddress,
+                  bookingDate,
+                  timeSlot,
                   notes,
                 });
+
                 if (!isValid) {
                   setDeliveryErrors(errors);
                   return;
                 }
+
+                if (deliveryType === 'PICKUP' && !deliveryAddress.trim()) {
+                  setDeliveryAddress(finalAddress);
+                }
+
                 setDeliveryErrors({});
                 setStep(4);
               }}
-              className="px-6 py-3 rounded-full bg-[#003527] hover:bg-[#064e3b] text-white font-bold text-xs shadow-md flex items-center gap-2"
+              className="px-6 py-3 rounded-full bg-[#003527] hover:bg-[#064e3b] text-white font-bold text-xs shadow-md flex items-center gap-2 cursor-pointer transition-all hover:scale-105 active:scale-95"
             >
               <span>Review Order</span>
               <ArrowRight className="w-4 h-4" />
