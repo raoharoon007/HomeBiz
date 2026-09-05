@@ -4,6 +4,7 @@ import { VendorProfile } from '../../types';
 import { useAuth } from '../../lib/authContext';
 import { Storage, useStorageSubscription } from '../../lib/storage';
 import { Star, MapPin, CheckCircle, Heart, Sparkles, Clock } from 'lucide-react';
+import { formatPrice } from '../../lib/countryUtils';
 
 interface VendorCardProps {
   key?: React.Key;
@@ -129,7 +130,7 @@ export function VendorCard({ vendor, compact = false }: VendorCardProps) {
               Starting from
             </span>
             <span className="text-sm sm:text-base font-extrabold text-[#003527]">
-              Rs. {vendor.startingPrice.toLocaleString()}
+              {formatPrice(vendor.startingPrice, vendor.city)}
             </span>
           </div>
 

@@ -1,10 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { useSearchParams } from '../lib/navigation';
+import { useSearchParams, Link } from '../lib/navigation';
 import { Storage, useStorageSubscription } from '../lib/storage';
 import { VendorCard } from '../components/marketplace/VendorCard';
 import { FilterSidebar, FilterState } from '../components/marketplace/FilterSidebar';
 import { InteractiveMap } from '../components/marketplace/InteractiveMap';
-import { Search, MapPin, SlidersHorizontal, Map, List, ArrowUpDown } from 'lucide-react';
+import { Search, MapPin, SlidersHorizontal, Map, List, ArrowUpDown, Store } from 'lucide-react';
 
 export function SearchPage() {
   useStorageSubscription();
@@ -196,18 +196,31 @@ export function SearchPage() {
           </div>
 
           {filteredVendors.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-[#e3e2e1] p-12 text-center space-y-3">
-              <Search className="w-10 h-10 text-stone-300 mx-auto" />
-              <h3 className="font-bold text-base text-[#1a1c1c]">No Businesses Found</h3>
-              <p className="text-xs text-[#665d55] max-w-sm mx-auto">
-                Try adjusting your city filter, category, or expanding your budget range.
-              </p>
-              <button
-                onClick={handleResetFilters}
-                className="px-4 py-2 rounded-full bg-[#003527] text-white text-xs font-bold shadow-xs hover:bg-[#064e3b]"
-              >
-                Clear All Filters
-              </button>
+            <div className="bg-white rounded-3xl border border-dashed border-stone-300 p-10 text-center space-y-4">
+              <div className="w-14 h-14 rounded-full bg-emerald-50 text-emerald-800 flex items-center justify-center mx-auto text-xl shadow-inner">
+                🏪
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-bold text-base text-[#1a1c1c]">No Businesses Found</h3>
+                <p className="text-xs text-[#665d55] max-w-sm mx-auto">
+                  No businesses listed yet matching your current filters. Be the first home business to join HomeBiz in this area!
+                </p>
+              </div>
+              <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+                <button
+                  onClick={handleResetFilters}
+                  className="px-5 py-2.5 rounded-full bg-stone-100 hover:bg-stone-200 text-[#1a1c1c] text-xs font-bold transition-colors"
+                >
+                  Clear All Filters
+                </button>
+                <Link
+                  href="/become-a-seller"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#003527] hover:bg-[#064e3b] text-white text-xs font-bold shadow-sm transition-all hover:scale-105"
+                >
+                  <Store className="w-3.5 h-3.5 text-[#ffe088]" />
+                  <span>List Your Business</span>
+                </Link>
+              </div>
             </div>
           ) : (
             <div className="space-y-4">

@@ -120,7 +120,7 @@ export const becomeSellerSchema = yup.object().shape({
     .number()
     .typeError('Starting price must be a valid number')
     .required('Starting price is required')
-    .min(200, 'Starting price must be at least Rs. 200'),
+    .min(1, 'Starting price must be greater than 0'),
   description: yup
     .string()
     .trim()
@@ -250,7 +250,7 @@ export const createServicePackageSchema = yup.object().shape({
     .number()
     .typeError('Price must be a valid number')
     .required('Price is required')
-    .min(100, 'Price must be at least Rs. 100'),
+    .min(1, 'Price must be greater than 0'),
   noticePeriod: yup
     .string()
     .trim()
@@ -268,7 +268,7 @@ export const sendQuoteSchema = yup.object().shape({
     .number()
     .typeError('Price must be a valid number')
     .required('Quote price is required')
-    .min(100, 'Service quote must be at least Rs. 100'),
+    .min(1, 'Service quote must be greater than 0'),
   deliveryFee: yup
     .number()
     .typeError('Delivery fee must be a number')

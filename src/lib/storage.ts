@@ -84,6 +84,17 @@ function safeSetItem<T>(key: string, value: T): void {
   }
 }
 
+const DUMMY_VENDOR_IDS = new Set([
+  'vendor-1', 'vendor-2', 'vendor-3', 'vendor-4', 'vendor-5',
+  'vendor-6', 'vendor-7', 'vendor-8', 'vendor-9', 'vendor-10', 'vendor-11'
+]);
+const DUMMY_USER_EMAILS = new Set([
+  'fatima.malik@example.com',
+  'ayesha.bake@example.com',
+  'noor.henna@example.com'
+]);
+const DUMMY_USER_IDS = new Set(['user-c1', 'user-v1', 'user-v2']);
+
 function mergeSeedData<T extends { id?: string; name?: string }>(stored: T[] | null | undefined, seed: T[]): T[] {
   if (!stored) return seed;
 
@@ -108,42 +119,99 @@ function mergeSeedData<T extends { id?: string; name?: string }>(stored: T[] | n
 export function initStorage() {
   if (typeof window === 'undefined') return;
 
-  const storedVendors = safeGetItem(STORAGE_KEYS.VENDORS, null);
-  const storedCities = safeGetItem(STORAGE_KEYS.CITIES, null);
+  const storedVendors = safeGetItem<VendorProfile[] | null>(STORAGE_KEYS.VENDORS, null);
+  const storedCities = safeGetItem<City[] | null>(STORAGE_KEYS.CITIES, null);
 
   if (!storedVendors || !storedCities) {
     safeSetItem(STORAGE_KEYS.USERS, SEED_USERS);
-    safeSetItem(STORAGE_KEYS.VENDORS, SEED_VENDORS);
+    safeSetItem(STORAGE_KEYS.VENDORS, []);
     safeSetItem(STORAGE_KEYS.CATEGORIES, SEED_CATEGORIES);
     safeSetItem(STORAGE_KEYS.CITIES, SEED_CITIES);
-    safeSetItem(STORAGE_KEYS.REQUESTS, SEED_REQUESTS);
-    safeSetItem(STORAGE_KEYS.QUOTES, SEED_QUOTES);
-    safeSetItem(STORAGE_KEYS.BOOKINGS, SEED_BOOKINGS);
-    safeSetItem(STORAGE_KEYS.REVIEWS, SEED_REVIEWS);
-    safeSetItem(STORAGE_KEYS.CONVERSATIONS, SEED_CONVERSATIONS);
-    safeSetItem(STORAGE_KEYS.MESSAGES, SEED_MESSAGES);
-    safeSetItem(STORAGE_KEYS.NOTIFICATIONS, SEED_NOTIFICATIONS);
+    safeSetItem(STORAGE_KEYS.REQUESTS, []);
+    safeSetItem(STORAGE_KEYS.QUOTES, []);
+    safeSetItem(STORAGE_KEYS.BOOKINGS, []);
+    safeSetItem(STORAGE_KEYS.REVIEWS, []);
+    safeSetItem(STORAGE_KEYS.CONVERSATIONS, []);
+    safeSetItem(STORAGE_KEYS.MESSAGES, []);
+    safeSetItem(STORAGE_KEYS.NOTIFICATIONS, []);
     safeSetItem(STORAGE_KEYS.COMMISSIONS, SEED_COMMISSION_SETTINGS);
-    safeSetItem(STORAGE_KEYS.FAVORITES, [
-      { id: 'fav-1', customerId: 'user-c1', vendorId: 'vendor-1', createdAt: new Date().toISOString() },
-    ]);
+    safeSetItem(STORAGE_KEYS.FAVORITES, []);
     safeSetItem(STORAGE_KEYS.ACTIVE_USER_ID, null);
     return;
   }
 
-  const mergedCities = mergeSeedData(storedCities, SEED_CITIES);
-  const mergedVendors = mergeSeedData(storedVendors, SEED_VENDORS);
+  // Purge legacy dummy seed data from localStorage to ensure ONLY REAL DATA is shown
+  const cleanedVendors = (storedVendors || []).filter(
+    (v) => !DUMMY_VENDOR_IDS.has(v.id)
+  );
+  safeSetItem(STORAGE_KEYS.VENDORS, cleanedVendors);
 
-  if (mergedCities.length !== storedCities.length || mergedVendors.length !== storedVendors.length) {
-    safeSetItem(STORAGE_KEYS.CITIES, mergedCities);
-    safeSetItem(STORAGE_KEYS.VENDORS, mergedVendors);
+  const storedUsers = safeGetItem<User[]>(STORAGE_KEYS.USERS, SEED_USERS);
+  const cleanedUsers = storedUsers.filter(
+    (u) => !DUMMY_USER_IDS.has(u.id) && !DUMMY_USER_EMAILS.has(u.email.toLowerCase())
+  );
+  // Ensure admin account exists
+  if (!cleanedUsers.some((u) => u.email.toLowerCase() === 'admin@homebiz.pk')) {
+    cleanedUsers.push(...SEED_USERS);
   }
+  safeSetItem(STORAGE_KEYS.USERS, cleanedUsers);
+
+  // Clean dummy bookings, reviews, requests, quotes, conversations, messages, notifications, favorites
+  const storedBookings = safeGetItem<Booking[]>(STORAGE_KEYS.BOOKINGS, []);
+  safeSetItem(
+    STORAGE_KEYS.BOOKINGS,
+    storedBookings.filter((b) => !DUMMY_VENDOR_IDS.has(b.vendorId) && !DUMMY_USER_IDS.has(b.customerId))
+  );
+
+  const storedReviews = safeGetItem<Review[]>(STORAGE_KEYS.REVIEWS, []);
+  safeSetItem(
+    STORAGE_KEYS.REVIEWS,
+    storedReviews.filter((r) => !DUMMY_VENDOR_IDS.has(r.vendorId) && !DUMMY_USER_IDS.has(r.customerId))
+  );
+
+  const storedRequests = safeGetItem<CustomerRequest[]>(STORAGE_KEYS.REQUESTS, []);
+  safeSetItem(
+    STORAGE_KEYS.REQUESTS,
+    storedRequests.filter((r) => !DUMMY_USER_IDS.has(r.customerId) && r.id !== 'req-1' && r.id !== 'req-2')
+  );
+
+  const storedQuotes = safeGetItem<Quote[]>(STORAGE_KEYS.QUOTES, []);
+  safeSetItem(
+    STORAGE_KEYS.QUOTES,
+    storedQuotes.filter((q) => !DUMMY_VENDOR_IDS.has(q.vendorId) && q.id !== 'quote-1' && q.id !== 'quote-2')
+  );
+
+  const storedConversations = safeGetItem<Conversation[]>(STORAGE_KEYS.CONVERSATIONS, []);
+  safeSetItem(
+    STORAGE_KEYS.CONVERSATIONS,
+    storedConversations.filter(
+      (c) =>
+        !DUMMY_VENDOR_IDS.has(c.vendorId || '') &&
+        !c.participants?.some((p) => DUMMY_USER_IDS.has(p.id))
+    )
+  );
+
+  const storedMessages = safeGetItem<Message[]>(STORAGE_KEYS.MESSAGES, []);
+  safeSetItem(
+    STORAGE_KEYS.MESSAGES,
+    storedMessages.filter(
+      (m) => !DUMMY_USER_IDS.has(m.senderId) && m.conversationId !== 'conv-1'
+    )
+  );
+
+  const storedFavorites = safeGetItem<Favorite[]>(STORAGE_KEYS.FAVORITES, []);
+  safeSetItem(
+    STORAGE_KEYS.FAVORITES,
+    storedFavorites.filter((f) => !DUMMY_VENDOR_IDS.has(f.vendorId) && !DUMMY_USER_IDS.has(f.customerId))
+  );
+
+  // Sync latest categories and cities structure with zero initial counts
+  safeSetItem(STORAGE_KEYS.CATEGORIES, SEED_CATEGORIES);
+  safeSetItem(STORAGE_KEYS.CITIES, SEED_CITIES);
 }
 
 const getDefaultPasswordForEmail = (email: string): string => {
   const normalized = email.toLowerCase();
-  if (normalized === 'fatima.malik@example.com') return 'customer123';
-  if (normalized === 'ayesha.bake@example.com') return 'seller123';
   if (normalized === 'admin@homebiz.pk') return 'admin123';
   return '';
 };
@@ -192,9 +260,23 @@ export const Storage = {
     });
   },
 
-  // Categories & Cities
-  getCategories: (): Category[] => safeGetItem(STORAGE_KEYS.CATEGORIES, SEED_CATEGORIES),
-  getCities: (): City[] => mergeSeedData(safeGetItem<City[] | null>(STORAGE_KEYS.CITIES, null), SEED_CITIES),
+  // Categories & Cities (Dynamically count only REAL approved vendors)
+  getCategories: (): Category[] => {
+    const rawCategories = safeGetItem<Category[]>(STORAGE_KEYS.CATEGORIES, SEED_CATEGORIES);
+    const vendors = Storage.getVendors().filter((v) => v.status === 'APPROVED');
+    return rawCategories.map((cat) => ({
+      ...cat,
+      vendorCount: vendors.filter((v) => v.category === cat.id).length,
+    }));
+  },
+  getCities: (): City[] => {
+    const rawCities = safeGetItem<City[]>(STORAGE_KEYS.CITIES, SEED_CITIES);
+    const vendors = Storage.getVendors().filter((v) => v.status === 'APPROVED');
+    return rawCities.map((c) => ({
+      ...c,
+      vendorCount: vendors.filter((v) => v.city?.toLowerCase() === c.name.toLowerCase()).length,
+    }));
+  },
 
   // Vendors
   getVendors: (): VendorProfile[] => safeGetItem(STORAGE_KEYS.VENDORS, SEED_VENDORS),
@@ -226,21 +308,19 @@ export const Storage = {
       city: user.city || 'Lahore',
       locality: `${user.city || 'Lahore'} Central`,
       showExactAddress: false,
-      coverImage: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=1200&q=80',
-      avatar: user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
-      gallery: [
-        'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=800&q=80',
-      ],
-      startingPrice: 2000,
+      coverImage: '',
+      avatar: user.avatar || '',
+      gallery: [],
+      startingPrice: 0,
       rating: 5.0,
       reviewCount: 0,
-      responseTime: '< 30 mins',
+      responseTime: '< 1 hour',
       experienceYears: 1,
       status: 'APPROVED',
       verificationStatus: 'VERIFIED',
       isFeatured: false,
       serviceAreas: [user.city || 'Lahore'],
-      specialties: ['Custom Design', 'Fresh Delivery'],
+      specialties: [],
       services: [],
       availabilityNotice: 'Accepting custom inquiries',
       coordinates: { lat: 31.5204, lng: 74.3587 },

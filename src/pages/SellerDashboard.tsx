@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { uploadImageToStorage } from '../lib/supabaseStorage';
-import { isAustralianLocation, formatCurrency } from '../lib/countryUtils';
+import { isAustralianLocation, formatCurrency, formatPrice, getCurrencySymbol, getCurrencyCode } from '../lib/countryUtils';
 import { validateForm, sendQuoteSchema, createServicePackageSchema } from '../lib/validationSchemas';
 
 export function SellerDashboard() {
@@ -99,6 +99,10 @@ export function SellerDashboard() {
   }
 
   // Tab detection
+  const isAus = isAustralianLocation(vendor.city);
+  const currencySym = isAus ? 'A$' : 'Rs.';
+  const currencyCode = isAus ? 'AUD' : 'PKR';
+
   let activeTab = 'overview';
   if (pathname.includes('/profile')) activeTab = 'profile';
   else if (pathname.includes('/services')) activeTab = 'services';
@@ -358,7 +362,7 @@ export function SellerDashboard() {
                     Total Revenue
                   </span>
                   <span className="text-xl sm:text-2xl font-black text-[#003527] block">
-                    Rs. {totalEarnings.toLocaleString()}
+                    {currencySym} {totalEarnings.toLocaleString()}
                   </span>
                   <span className="text-[10px] text-emerald-600 font-semibold">95% net payout</span>
                 </div>
@@ -425,7 +429,7 @@ export function SellerDashboard() {
                         </div>
                         <div className="text-right">
                           <span className="text-xs font-bold text-[#003527] block">
-                            Rs. {b.total.toLocaleString()}
+                            {currencySym} {b.total.toLocaleString()}
                           </span>
                           <span className="text-[10px] bg-[#b0f0d6]/40 text-[#003527] px-2 py-0.5 rounded-full font-semibold">
                             {b.status}
@@ -553,7 +557,7 @@ export function SellerDashboard() {
                         <p className="text-xs text-[#404944] line-clamp-2 mt-0.5">{srv.description}</p>
                       </div>
                       <span className="font-black text-sm text-[#003527]">
-                        Rs. {srv.price.toLocaleString()}
+                        {currencySym} {srv.price.toLocaleString()}
                       </span>
                     </div>
 
@@ -608,7 +612,7 @@ export function SellerDashboard() {
 
                     <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto gap-2">
                       <span className="text-base font-black text-[#003527]">
-                        Rs. {booking.total.toLocaleString()}
+                        {currencySym} {booking.total.toLocaleString()}
                       </span>
 
                       <div className="flex flex-wrap items-center gap-1.5 justify-end">
@@ -688,7 +692,7 @@ export function SellerDashboard() {
                         <h3 className="font-bold text-sm text-[#1a1c1c]">{req.serviceNeeded}</h3>
                       </div>
                       <span className="text-xs font-black text-[#003527] bg-[#b0f0d6]/30 px-3 py-1 rounded-full">
-                        Customer Budget: Rs. {req.budget.toLocaleString()}
+                        Customer Budget: {formatPrice(req.budget, req.city)}
                       </span>
                     </div>
 
@@ -979,7 +983,7 @@ export function SellerDashboard() {
                     Gross Order Volume
                   </span>
                   <span className="text-xl font-black text-[#003527] block mt-1">
-                    Rs. {totalEarnings.toLocaleString()}
+                    {currencySym} {totalEarnings.toLocaleString()}
                   </span>
                 </div>
 
@@ -988,7 +992,7 @@ export function SellerDashboard() {
                     Platform Commission (5%)
                   </span>
                   <span className="text-xl font-black text-[#735c00] block mt-1">
-                    Rs. {Math.round(totalEarnings * 0.05).toLocaleString()}
+                    {currencySym} {Math.round(totalEarnings * 0.05).toLocaleString()}
                   </span>
                 </div>
 
@@ -997,7 +1001,7 @@ export function SellerDashboard() {
                     Net Withdrawable (95%)
                   </span>
                   <span className="text-xl font-black text-[#003527] block mt-1">
-                    Rs. {Math.round(totalEarnings * 0.95).toLocaleString()}
+                    {currencySym} {Math.round(totalEarnings * 0.95).toLocaleString()}
                   </span>
                 </div>
               </div>
@@ -1178,7 +1182,7 @@ export function SellerDashboard() {
               <div className="p-3 bg-[#faf9f8] rounded-2xl border border-[#e3e2e1] flex items-center justify-between">
                 <span className="font-bold text-[#1a1c1c]">Total Customer Pays:</span>
                 <span className="font-black text-sm text-[#003527]">
-                  Rs. {(quotePrice + quoteDeliveryFee).toLocaleString()}
+                  {currencySym} {(quotePrice + quoteDeliveryFee).toLocaleString()}
                 </span>
               </div>
 
@@ -1261,7 +1265,7 @@ export function SellerDashboard() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-[#1a1c1c] uppercase tracking-wider mb-1">
-                    Price (PKR)
+                    Price ({currencyCode})
                   </label>
                   <input
                     type="number"

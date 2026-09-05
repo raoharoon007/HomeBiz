@@ -87,7 +87,28 @@ export const REGIONAL_PLAN_PRICING = {
 export type SupportedCurrency = 'PKR' | 'AUD';
 
 /**
- * Format currency with appropriate symbol
+ * Detect currency from location or city (PKR or AUD)
+ */
+export function getCurrencyForLocation(location?: string | null): SupportedCurrency {
+  return isAustralianLocation(location) ? 'AUD' : 'PKR';
+}
+
+/**
+ * Returns the currency symbol for a location ('A$' for Australia, 'Rs.' for Pakistan)
+ */
+export function getCurrencySymbol(location?: string | null): string {
+  return isAustralianLocation(location) ? 'A$' : 'Rs.';
+}
+
+/**
+ * Returns the 3-letter currency code ('AUD' or 'PKR')
+ */
+export function getCurrencyCode(location?: string | null): SupportedCurrency {
+  return isAustralianLocation(location) ? 'AUD' : 'PKR';
+}
+
+/**
+ * Format currency with appropriate symbol based on explicit currency
  */
 export function formatCurrency(amount: number, currency: SupportedCurrency = 'PKR'): string {
   if (currency === 'AUD') {
@@ -97,8 +118,19 @@ export function formatCurrency(amount: number, currency: SupportedCurrency = 'PK
 }
 
 /**
+ * Format price for a vendor / service based on vendor location or city
+ * Pakistan: "Rs. 2,500"
+ * Australia: "A$ 35"
+ */
+export function formatPrice(amount: number, locationOrCity?: string | null): string {
+  const currency = getCurrencyForLocation(locationOrCity);
+  return formatCurrency(amount, currency);
+}
+
+/**
  * Convert PKR to estimated AUD for cross-border estimation (~1 AUD ≈ 180 PKR)
  */
 export function convertPkrToAud(pkrAmount: number): number {
   return Math.max(1, Math.round((pkrAmount / 180) * 10) / 10);
 }
+

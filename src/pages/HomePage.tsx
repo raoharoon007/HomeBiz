@@ -135,16 +135,16 @@ export function HomePage() {
             {/* Trust & Guarantee Metrics */}
             <div className="pt-4 grid grid-cols-3 gap-3 border-t border-emerald-800/60 max-w-lg">
               <div>
-                <span className="text-lg sm:text-2xl font-black text-[#ffe088] block">500+</span>
+                <span className="text-lg sm:text-2xl font-black text-[#ffe088] block">100%</span>
                 <span className="text-[11px] text-emerald-200">Verified Creators</span>
               </div>
               <div>
-                <span className="text-lg sm:text-2xl font-black text-[#ffe088] block">4.9★</span>
-                <span className="text-[11px] text-emerald-200">Customer Rating</span>
+                <span className="text-lg sm:text-2xl font-black text-[#ffe088] block">Direct</span>
+                <span className="text-[11px] text-emerald-200">WhatsApp & Chat</span>
               </div>
               <div>
-                <span className="text-lg sm:text-2xl font-black text-[#ffe088] block">100%</span>
-                <span className="text-[11px] text-emerald-200">Safe Guarantee</span>
+                <span className="text-lg sm:text-2xl font-black text-[#ffe088] block">Rs. 0</span>
+                <span className="text-[11px] text-emerald-200">Buyer Platform Fee</span>
               </div>
             </div>
           </div>
@@ -172,12 +172,12 @@ export function HomePage() {
 
               {/* Floating Social Proof Card */}
               <div className="absolute -top-4 -right-4 bg-white text-[#1a1c1c] p-3.5 rounded-2xl shadow-xl border border-stone-200 max-w-[200px] animate-fade-in">
-                <div className="flex items-center gap-1.5 text-xs text-[#cca72f] font-bold">
-                  <Star className="w-4 h-4 fill-[#cca72f]" />
-                  <span>10,000+ Orders</span>
+                <div className="flex items-center gap-1.5 text-xs text-[#003527] font-bold">
+                  <Sparkles className="w-4 h-4 text-[#cca72f]" />
+                  <span>Direct Creator Chat</span>
                 </div>
                 <p className="text-[11px] text-[#404944] mt-0.5 font-medium leading-tight">
-                  Fulfilled by home businesses in Lahore & Karachi
+                  Connect straight with home creators with zero platform markup
                 </p>
               </div>
             </div>
@@ -260,11 +260,34 @@ export function HomePage() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {lahoreVendors.map((vendor) => (
-            <VendorCard key={vendor.id} vendor={vendor} />
-          ))}
-        </div>
+        {lahoreVendors.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {lahoreVendors.map((vendor) => (
+              <VendorCard key={vendor.id} vendor={vendor} />
+            ))}
+          </div>
+        ) : (
+          <div className="bg-white rounded-3xl p-8 sm:p-12 text-center border border-dashed border-stone-300 shadow-sm max-w-2xl mx-auto space-y-4">
+            <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-800 flex items-center justify-center mx-auto text-2xl shadow-inner">
+              🏪
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg sm:text-xl font-bold text-[#1a1c1c]">No businesses listed yet in Lahore</h3>
+              <p className="text-xs sm:text-sm text-[#665d55] max-w-md mx-auto">
+                Be the first home chef, baker, designer, or creator in Lahore to showcase your skills and get orders directly!
+              </p>
+            </div>
+            <div className="pt-2">
+              <Link
+                href="/become-a-seller"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#003527] hover:bg-[#064e3b] text-white font-bold text-xs sm:text-sm shadow-md transition-all hover:scale-105"
+              >
+                <Store className="w-4 h-4 text-[#ffe088]" />
+                <span>List Your Business</span>
+              </Link>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* HOW IT WORKS */}

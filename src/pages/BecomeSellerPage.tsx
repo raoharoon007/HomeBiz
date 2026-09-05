@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { useRouter } from '../lib/navigation';
 import { Storage } from '../lib/storage';
 import { useAuth } from '../lib/authContext';
-import { Vendor } from '../types';
+import { Vendor, User } from '../types';
 import { Store, CheckCircle, Sparkles, ShieldCheck, ArrowRight, AlertCircle } from 'lucide-react';
 import { PricingCards } from '../components/marketplace/PricingCards';
 import confetti from 'canvas-confetti';
 import { validateForm, becomeSellerSchema } from '../lib/validationSchemas';
+import { isAustralianLocation } from '../lib/countryUtils';
 
 export function BecomeSellerPage() {
   const router = useRouter();
@@ -49,10 +50,35 @@ export function BecomeSellerPage() {
 
     setSubmitting(true);
     const slug = businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+    const vendorId = `v-${Date.now()}`;
+
+    let activeSellerUser = user;
+    if (!activeSellerUser) {
+      const newUserId = `user-s-${Date.now()}`;
+      const createdUser: User = {
+        id: newUserId,
+        name: businessName,
+        email: `${slug}@homebiz.local`,
+        phone: '',
+        role: 'SELLER',
+        city,
+        sellerProfileId: vendorId,
+        createdAt: new Date().toISOString(),
+      };
+      Storage.saveUser(createdUser);
+      loginAs(createdUser);
+      activeSellerUser = createdUser;
+    } else {
+      loginAs({
+        ...user,
+        role: 'SELLER',
+        sellerProfileId: vendorId,
+      });
+    }
 
     const newVendor: Vendor = {
-      id: `v-${Date.now()}`,
-      userId: user?.id || 'user-v1',
+      id: vendorId,
+      userId: activeSellerUser.id,
       businessName,
       slug: `${slug}-${Date.now().toString().slice(-4)}`,
       tagline,
@@ -62,62 +88,28 @@ export function BecomeSellerPage() {
       locality,
       startingPrice,
       rating: 5.0,
-      reviewCount: 1,
+      reviewCount: 0,
       status: 'APPROVED',
       isFeatured: false,
       verificationStatus: 'PENDING',
-      coverImage:
-        'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=1200&q=80',
-      avatar: user?.avatar || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=200&q=80',
-      gallery: [
-        'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=600&q=80',
-        'https://images.unsplash.com/photo-1535141192574-5d4897c13136?auto=format&fit=crop&w=600&q=80',
-      ],
+      coverImage: '',
+      avatar: activeSellerUser?.avatar || '',
+      gallery: [],
       description,
-      specialties: ['Custom Bespoke Orders', 'Fresh Ingredients', 'Fast Response'],
-      serviceAreas: [locality, 'Gulberg', 'Model Town'],
-      availabilityNotice: 'Accepting orders with 48h advance notice',
-      responseTime: '< 30 mins',
+      specialties: [],
+      serviceAreas: [locality],
+      availabilityNotice: 'Available for inquiries',
+      responseTime: '< 1 hour',
       experienceYears,
       coordinates: {
         lat: 31.5204,
         lng: 74.3587,
       },
-      services: [
-        {
-          id: `srv-${Date.now()}-1`,
-          title: `Signature Custom Package`,
-          description: `Handcrafted with love and attention to detail.`,
-          price: startingPrice,
-          category,
-          image:
-            'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=600&q=80',
-          noticePeriod: '48 hours notice',
-          duration: 'Custom delivery',
-          isPopular: true,
-          addons: [
-            {
-              id: 'add-1',
-              name: 'Gift Box Packaging with Ribbon',
-              price: 350,
-              description: 'Luxury ribboned packaging',
-            },
-          ],
-        },
-      ],
+      services: [],
       createdAt: new Date().toISOString(),
     };
 
     Storage.registerVendor(newVendor);
-
-    // Update current user to SELLER role
-    if (user) {
-      loginAs({
-        ...user,
-        role: 'SELLER',
-        sellerProfileId: newVendor.id,
-      });
-    }
 
     confetti({
       particleCount: 100,
@@ -260,8 +252,14 @@ export function BecomeSellerPage() {
             <select
               value={city}
               onChange={(e) => {
-                setCity(e.target.value);
+                const selected = e.target.value;
+                setCity(selected);
                 if (fieldErrors.city) setFieldErrors(prev => ({ ...prev, city: '' }));
+                if (isAustralianLocation(selected) && startingPrice > 200) {
+                  setStartingPrice(50);
+                } else if (!isAustralianLocation(selected) && startingPrice < 100) {
+                  setStartingPrice(3500);
+                }
               }}
               className={`w-full text-xs p-3 bg-[#faf9f8] border rounded-2xl outline-none font-semibold text-[#1a1c1c] transition-colors ${
                 fieldErrors.city
@@ -271,7 +269,7 @@ export function BecomeSellerPage() {
             >
               {cities.map((c) => (
                 <option key={c.id} value={c.name}>
-                  {c.name}
+                  {c.name} {isAustralianLocation(c.name) ? '(🇦🇺 Australia - AUD)' : '(🇵🇰 Pakistan - PKR)'}
                 </option>
               ))}
             </select>
@@ -289,7 +287,7 @@ export function BecomeSellerPage() {
             </label>
             <input
               type="text"
-              placeholder="e.g. DHA Phase 5, Clifton, F-7"
+              placeholder={isAustralianLocation(city) ? "e.g. Surry Hills, Parramatta, Bondi" : "e.g. DHA Phase 5, Clifton, F-7"}
               value={locality}
               onChange={(e) => {
                 setLocality(e.target.value);
@@ -311,11 +309,11 @@ export function BecomeSellerPage() {
 
           <div>
             <label className="block text-xs font-bold text-[#1a1c1c] uppercase tracking-wider mb-1">
-              Starting Price (PKR)
+              Starting Price ({isAustralianLocation(city) ? 'AUD / A$' : 'PKR / Rs.'})
             </label>
             <input
               type="number"
-              step="500"
+              step={isAustralianLocation(city) ? "5" : "500"}
               value={startingPrice}
               onChange={(e) => {
                 setStartingPrice(Number(e.target.value));

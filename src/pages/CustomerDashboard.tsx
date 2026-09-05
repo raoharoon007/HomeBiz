@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { uploadImageToStorage } from '../lib/supabaseStorage';
 import { validateForm, profileSettingsSchema } from '../lib/validationSchemas';
-import { isAustralianLocation } from '../lib/countryUtils';
+import { isAustralianLocation, formatPrice } from '../lib/countryUtils';
 
 export function CustomerDashboard() {
   useStorageSubscription();
@@ -371,7 +371,7 @@ export function CustomerDashboard() {
                             <h3 className="font-bold text-sm text-[#1a1c1c]">{req.serviceNeeded}</h3>
                           </div>
                           <span className="text-xs font-extrabold text-[#003527] bg-[#b0f0d6]/30 px-3 py-1 rounded-full">
-                            Budget: Rs. {req.budget.toLocaleString()}
+                            Budget: {formatPrice(req.budget, req.city)}
                           </span>
                         </div>
 

@@ -290,7 +290,7 @@ export function BookingPage() {
                   <p className="text-xs text-[#404944] mt-1 line-clamp-2">{srv.description}</p>
                   <div className="mt-3 flex items-center justify-between">
                     <span className="font-extrabold text-sm text-[#003527]">
-                      Rs. {srv.price.toLocaleString()}
+                      {formatCurrency(srv.price, bookingCurrency)}
                     </span>
                     <span className="text-[10px] text-[#665d55]">{srv.noticePeriod}</span>
                   </div>
@@ -327,7 +327,7 @@ export function BookingPage() {
                         </div>
                       </div>
                       <span className="text-xs font-bold text-[#003527]">
-                        + Rs. {addon.price.toLocaleString()}
+                        + {formatCurrency(addon.price, bookingCurrency)}
                       </span>
                     </label>
                   );

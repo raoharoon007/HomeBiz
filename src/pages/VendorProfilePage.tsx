@@ -19,6 +19,7 @@ import {
   ArrowRight,
   Info,
 } from 'lucide-react';
+import { formatPrice } from '../lib/countryUtils';
 
 export function VendorProfilePage() {
   useStorageSubscription();
@@ -295,7 +296,7 @@ export function VendorProfilePage() {
                   <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto gap-3 sm:gap-2 flex-shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#f4f3f2]">
                     <div className="text-left sm:text-right">
                       <span className="text-base sm:text-lg font-black text-[#003527] block">
-                        Rs. {service.price.toLocaleString()}
+                        {formatPrice(service.price, vendor.city)}
                       </span>
                     </div>
 

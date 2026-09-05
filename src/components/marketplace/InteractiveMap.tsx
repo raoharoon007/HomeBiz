@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { VendorProfile } from '../../types';
 import { Link } from '../../lib/navigation';
 import { Star, MapPin, ZoomIn, ZoomOut, Navigation, Sparkles, X } from 'lucide-react';
+import { formatPrice } from '../../lib/countryUtils';
 
 interface InteractiveMapProps {
   vendors: VendorProfile[];
@@ -136,7 +137,7 @@ export function InteractiveMap({
           cursor: pointer;
           transition: transform 0.2s;
         ">
-          <span>Rs. ${vendor.startingPrice.toLocaleString()}</span>
+          <span>${formatPrice(vendor.startingPrice, vendor.city)}</span>
           ${vendor.isFeatured ? '<span style="color:#cca72f">★</span>' : ''}
         </div>
       `;
@@ -256,7 +257,7 @@ export function InteractiveMap({
 
               <div className="mt-2 flex items-center justify-between">
                 <span className="text-xs font-bold text-[#003527]">
-                  From Rs. {activeVendor.startingPrice.toLocaleString()}
+                  From {formatPrice(activeVendor.startingPrice, activeVendor.city)}
                 </span>
                 <Link
                   href={`/vendors/${activeVendor.slug}`}

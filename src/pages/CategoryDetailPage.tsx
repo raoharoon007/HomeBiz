@@ -2,7 +2,7 @@ import React from 'react';
 import { usePathname, Link } from '../lib/navigation';
 import { Storage, useStorageSubscription } from '../lib/storage';
 import { VendorCard } from '../components/marketplace/VendorCard';
-import { Sparkles, ArrowLeft, PlusCircle } from 'lucide-react';
+import { Sparkles, ArrowLeft, PlusCircle, Store } from 'lucide-react';
 
 export function CategoryDetailPage() {
   useStorageSubscription();
@@ -72,8 +72,25 @@ export function CategoryDetailPage() {
         </div>
 
         {vendors.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-[#e3e2e1] p-12 text-center text-xs text-[#665d55]">
-            No sellers registered in this category yet. Be the first to join!
+          <div className="bg-white rounded-3xl border border-dashed border-stone-300 p-10 text-center max-w-lg mx-auto space-y-4">
+            <div className="w-14 h-14 rounded-full bg-emerald-50 text-emerald-800 flex items-center justify-center mx-auto text-xl shadow-inner">
+              🏪
+            </div>
+            <div className="space-y-1">
+              <h3 className="font-bold text-[#1a1c1c] text-base">No businesses listed yet in {category.name}</h3>
+              <p className="text-xs text-[#665d55]">
+                Be the first verified creator in {category.name} to list your business and receive customer inquiries!
+              </p>
+            </div>
+            <div className="pt-2 flex justify-center">
+              <Link
+                href="/become-a-seller"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#003527] hover:bg-[#064e3b] text-white font-bold text-xs shadow-md transition-all hover:scale-105"
+              >
+                <Store className="w-4 h-4 text-[#ffe088]" />
+                <span>List Your Business</span>
+              </Link>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
