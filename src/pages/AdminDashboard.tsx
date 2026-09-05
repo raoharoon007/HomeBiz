@@ -382,14 +382,57 @@ export function AdminDashboard() {
                       <p className="text-[#665d55] mt-0.5">
                         📅 {b.date} • 📍 {b.deliveryAddress}
                       </p>
+                      {b.transactionId && (
+                        <p className="text-[11px] font-mono text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md w-fit border border-emerald-200 mt-1">
+                          TID / Ref: {b.transactionId}
+                        </p>
+                      )}
                     </div>
-                    <div className="text-right">
+                    <div className="text-right space-y-1.5">
                       <span className="font-black text-sm text-[#003527] block">
                         Rs. {b.total.toLocaleString()}
                       </span>
-                      <span className="text-[10px] bg-[#b0f0d6]/40 text-[#003527] px-2 py-0.5 rounded-full font-bold">
-                        {b.status} ({b.paymentMethod})
-                      </span>
+                      <div className="flex items-center gap-1 justify-end">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                          b.paymentMethod === 'PAYPAL'
+                            ? 'bg-blue-100 text-[#003087]'
+                            : 'bg-[#b0f0d6]/40 text-[#003527]'
+                        }`}>
+                          {b.status} ({b.paymentMethod === 'PAYPAL' ? '🅿️ PayPal' : b.paymentMethod})
+                        </span>
+                      </div>
+                      {b.paymentMethod !== 'CASH_ON_DELIVERY' && (
+                        <div className="flex items-center gap-1 justify-end pt-1">
+                          {b.paymentStatus !== 'PAID' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                Storage.updateBookingPaymentStatus(b.id, 'PAID');
+                                window.location.reload();
+                              }}
+                              className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold cursor-pointer"
+                              title="Verify payment received in bank/paypal account"
+                            >
+                              ✓ Verify Paid
+                            </button>
+                          )}
+                          {b.status !== 'CANCELLED' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm('Mark this payment as unpaid/cancelled?')) {
+                                  Storage.updateBookingPaymentStatus(b.id, 'FAILED');
+                                  window.location.reload();
+                                }
+                              }}
+                              className="px-2 py-0.5 rounded border border-red-300 text-red-600 hover:bg-red-50 text-[10px] font-bold cursor-pointer"
+                              title="Reject fake TID or unpaid booking"
+                            >
+                              ✗ Reject
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}

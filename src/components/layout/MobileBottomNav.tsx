@@ -9,28 +9,7 @@ export function MobileBottomNav() {
   const pathname = usePathname();
   const { role, user } = useAuth();
 
-  const userVendor = user
-    ? Storage.getVendors().find((v) => v.id === user.sellerProfileId || v.userId === user.id)
-    : null;
-
-  const conversations = Storage.getConversations();
-  const unreadMessagesCount = user
-    ? conversations.reduce((acc, c) => {
-      if (
-        role === 'SELLER' &&
-        (c.vendorId === user.sellerProfileId ||
-          c.vendorId === user.id ||
-          (userVendor && c.vendorId === userVendor.id) ||
-          c.participants?.some((p) => p.id === user.id || (userVendor && p.id === userVendor.id)))
-      ) {
-        return acc + (c.unreadCountVendor || 0);
-      }
-      if (c.customerId === user.id || c.participants?.some((p) => p.id === user.id)) {
-        return acc + (c.unreadCountCustomer || 0);
-      }
-      return acc;
-    }, 0)
-    : 0;
+  const unreadMessagesCount = user ? Storage.getUnreadCountForUser(user.id, role) : 0;
 
   const getDashboardLink = () => {
     if (role === 'ADMIN') return '/admin/dashboard';

@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { uploadImageToStorage } from '../lib/supabaseStorage';
 import { validateForm, profileSettingsSchema } from '../lib/validationSchemas';
+import { isAustralianLocation } from '../lib/countryUtils';
 
 export function CustomerDashboard() {
   useStorageSubscription();
@@ -99,9 +100,11 @@ export function CustomerDashboard() {
   });
 
   const customerConversations = user
-    ? Storage.getConversations().filter((c) => c.customerId === user.id || Boolean(c.participants?.some((p) => p.id === user.id)))
+    ? Storage.getConversationsForUser(user.id, 'CUSTOMER')
     : [];
-  const unreadCustomerMessages = customerConversations.reduce((acc, c) => acc + (c.unreadCountCustomer || 0), 0);
+  const unreadCustomerMessages = user
+    ? Storage.getUnreadCountForUser(user.id, 'CUSTOMER')
+    : 0;
 
   const handleChatWithVendor = (vendorId: string, vendorName: string, bookingRef?: string) => {
     if (!user) return;
@@ -264,6 +267,11 @@ export function CustomerDashboard() {
                             <span className="text-[10px] bg-[#b0f0d6]/40 text-[#003527] px-2 py-0.5 rounded-full font-bold">
                               {booking.status}
                             </span>
+                            {booking.paymentMethod === 'PAYPAL' && (
+                              <span className="text-[10px] bg-blue-100 text-[#003087] px-2 py-0.5 rounded-full font-bold">
+                                🅿️ PayPal
+                              </span>
+                            )}
                           </div>
                           <h3 className="font-bold text-sm text-[#1a1c1c]">{booking.serviceTitle}</h3>
                           <Link
@@ -282,7 +290,9 @@ export function CustomerDashboard() {
 
                       <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#f4f3f2]">
                         <span className="text-base font-black text-[#003527]">
-                          Rs. {booking.total.toLocaleString()}
+                          {booking.bookingNumber.startsWith('HB-AU') || isAustralianLocation(booking.deliveryAddress)
+                            ? `A$ ${booking.total.toLocaleString()}`
+                            : `Rs. ${booking.total.toLocaleString()}`}
                         </span>
 
                         <div className="flex items-center gap-2">

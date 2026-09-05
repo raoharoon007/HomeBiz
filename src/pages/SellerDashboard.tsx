@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { uploadImageToStorage } from '../lib/supabaseStorage';
+import { isAustralianLocation, formatCurrency } from '../lib/countryUtils';
 import { validateForm, sendQuoteSchema, createServicePackageSchema } from '../lib/validationSchemas';
 
 export function SellerDashboard() {
@@ -75,11 +76,10 @@ export function SellerDashboard() {
     );
   }
 
-  // Find vendor profile
-  const vendor =
-    (user && Storage.getVendors().find((v) => v.id === user.sellerProfileId || v.userId === user.id)) ||
-    Storage.getVendors()[0] ||
-    null;
+  // Find vendor profile for authenticated seller
+  const vendor = user
+    ? Storage.getSellerVendor(user.id) || Storage.ensureSellerVendor(user)
+    : null;
 
   if (!vendor) {
     return (
@@ -116,15 +116,9 @@ export function SellerDashboard() {
     (r) => r.category === vendor.category || (r.city && vendor.city && r.city.toLowerCase() === vendor.city.toLowerCase())
   );
 
-  // Unread messages count for seller
-  const sellerConversations = Storage.getConversations().filter(
-    (c) =>
-      c.vendorId === vendor.id ||
-      c.vendorId === user.sellerProfileId ||
-      c.vendorId === user.id ||
-      Boolean(c.participants?.some((p) => p.id === user.id || p.id === vendor.id))
-  );
-  const unreadVendorMessages = sellerConversations.reduce((acc, c) => acc + (c.unreadCountVendor || 0), 0);
+  // Unread messages count for seller (single source of truth matching conversation query 100%)
+  const sellerConversations = user ? Storage.getConversationsForUser(user.id, 'SELLER') : [];
+  const unreadVendorMessages = user ? Storage.getUnreadCountForUser(user.id, 'SELLER') : 0;
 
   const handleChatWithCustomer = (customerId: string, customerName: string, refTitle?: string) => {
     const conv = Storage.getOrCreateConversation(customerId, vendor.id, {
@@ -590,8 +584,12 @@ export function SellerDashboard() {
                         <span className="text-[10px] bg-[#b0f0d6]/40 text-[#003527] px-2 py-0.5 rounded-full font-bold">
                           {booking.status}
                         </span>
-                        <span className="text-[10px] bg-[#f4f3f2] text-[#665d55] px-2 py-0.5 rounded-full">
-                          {booking.paymentMethod}
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                          booking.paymentMethod === 'PAYPAL'
+                            ? 'bg-blue-100 text-[#003087]'
+                            : 'bg-[#f4f3f2] text-[#665d55]'
+                        }`}>
+                          {booking.paymentMethod === 'PAYPAL' ? '🅿️ PayPal' : booking.paymentMethod}
                         </span>
                       </div>
                       <h4 className="font-bold text-sm text-[#1a1c1c]">{booking.serviceTitle}</h4>
@@ -601,6 +599,11 @@ export function SellerDashboard() {
                       <p className="text-xs text-[#665d55]">
                         📍 {booking.deliveryAddress} • 📅 {booking.date} ({booking.timeSlot})
                       </p>
+                      {booking.transactionId && (
+                        <p className="text-[11px] font-mono text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-xl w-fit border border-emerald-200 mt-1">
+                          <strong>Payment TID / Ref:</strong> {booking.transactionId}
+                        </p>
+                      )}
                     </div>
 
                     <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto gap-2">
@@ -608,8 +611,35 @@ export function SellerDashboard() {
                         Rs. {booking.total.toLocaleString()}
                       </span>
 
-                      <div className="flex items-center gap-2">
-                        {booking.status !== 'COMPLETED' && (
+                      <div className="flex flex-wrap items-center gap-1.5 justify-end">
+                        {booking.paymentStatus !== 'PAID' && booking.paymentMethod !== 'CASH_ON_DELIVERY' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              Storage.updateBookingPaymentStatus(booking.id, 'PAID');
+                              confetti({ particleCount: 40 });
+                            }}
+                            className="px-2.5 py-1 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold cursor-pointer"
+                            title="Verify and confirm payment received in your account"
+                          >
+                            ✓ Confirm Paid
+                          </button>
+                        )}
+                        {booking.paymentStatus !== 'FAILED' && booking.status !== 'CANCELLED' && booking.paymentMethod !== 'CASH_ON_DELIVERY' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm('Did you not receive this payment? This will cancel the booking as unpaid.')) {
+                                Storage.updateBookingPaymentStatus(booking.id, 'FAILED');
+                              }
+                            }}
+                            className="px-2.5 py-1 rounded-full border border-red-300 text-red-700 hover:bg-red-50 text-[11px] font-bold cursor-pointer"
+                            title="Mark payment as not received / reject fake TID"
+                          >
+                            ✗ Unpaid / Reject
+                          </button>
+                        )}
+                        {booking.status !== 'COMPLETED' && booking.status !== 'CANCELLED' && (
                           <button
                             onClick={() => {
                               Storage.updateBookingStatus(booking.id, 'COMPLETED');
@@ -626,7 +656,7 @@ export function SellerDashboard() {
                           className="px-3 py-1.5 rounded-full border border-[#003527] text-[#003527] hover:bg-[#003527] hover:text-white transition-colors text-xs font-bold flex items-center gap-1 cursor-pointer"
                         >
                           <MessageSquare className="w-3.5 h-3.5" />
-                          <span>Message Customer</span>
+                          <span>Message</span>
                         </button>
                       </div>
                     </div>
@@ -867,6 +897,15 @@ export function SellerDashboard() {
                     </span>
                     <span className="text-lg font-black text-[#735c00] block mt-1 capitalize">
                       {currentSubscription?.paymentStatus || 'Active'} ✓
+                    </span>
+                  </div>
+
+                  <div className="p-4 bg-blue-50 rounded-2xl border border-blue-200">
+                    <span className="text-[10px] font-bold text-[#003087] uppercase tracking-wider block">
+                      Payment Channel
+                    </span>
+                    <span className="text-sm font-black text-[#003087] block mt-1">
+                      {currentSubscription?.paymentMethod === 'PAYPAL' ? '🅿️ PayPal Verified' : (currentSubscription?.paymentMethod || 'Active')}
                     </span>
                   </div>
                 </div>

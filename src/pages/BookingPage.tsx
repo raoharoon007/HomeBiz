@@ -20,6 +20,7 @@ import confetti from 'canvas-confetti';
 import { sendBookingConfirmationEmail } from '../lib/emailService';
 import { PaymentGateway, PaymentResult } from '../components/marketplace/PaymentGateway';
 import { validateForm, bookingDetailsSchema } from '../lib/validationSchemas';
+import { isAustralianLocation, formatCurrency, SupportedCurrency } from '../lib/countryUtils';
 
 export function BookingPage() {
   useStorageSubscription();
@@ -88,7 +89,14 @@ export function BookingPage() {
   const [deliveryType, setDeliveryType] = useState<'DELIVERY' | 'PICKUP' | 'AT_HOME'>('DELIVERY');
   const [deliveryAddress, setDeliveryAddress] = useState(user?.address || 'House 142, Phase 5 DHA, Lahore');
   const [notes, setNotes] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'CASH_ON_DELIVERY' | 'JAZZCASH_EASYPAISA' | 'BANK_TRANSFER' | 'CARD'>('CASH_ON_DELIVERY');
+
+  // Australia Location & Currency Detection
+  const isVendorAustralian = isAustralianLocation(vendor.city) || isAustralianLocation(vendor.locality) || isAustralianLocation(vendor.exactAddress);
+  const isCustomerAustralian = isAustralianLocation(user?.city) || isAustralianLocation(deliveryAddress);
+  const isAustralia = isVendorAustralian || isCustomerAustralian;
+  const bookingCurrency: SupportedCurrency = isAustralia ? 'AUD' : 'PKR';
+
+  const [paymentMethod, setPaymentMethod] = useState<Booking['paymentMethod']>(isAustralia ? 'PAYPAL' : 'CASH_ON_DELIVERY');
   const [deliveryErrors, setDeliveryErrors] = useState<Record<string, string>>({});
   const [createdBooking, setCreatedBooking] = useState<Booking | null>(null);
   const [showPaymentGateway, setShowPaymentGateway] = useState(false);
@@ -104,7 +112,7 @@ export function BookingPage() {
 
   const addonsTotal = selectedAddons.reduce((sum, a) => sum + a.price, 0);
   const subtotal = selectedService?.price ?? initialService.price;
-  const platformFee = 150;
+  const platformFee = isAustralia ? 5 : 150;
   const grandTotal = subtotal + addonsTotal + platformFee;
 
   const toggleAddon = (addon: ServiceAddon) => {
@@ -117,13 +125,14 @@ export function BookingPage() {
 
   const createAndSaveBooking = (txnId?: string, overrideMethod?: Booking['paymentMethod']) => {
     const finalPaymentMethod = overrideMethod || paymentMethod;
-    const bookingNumber = `HB-PK-${Math.floor(10000 + Math.random() * 90000)}`;
+    const prefix = isAustralia ? 'HB-AU' : 'HB-PK';
+    const bookingNumber = `${prefix}-${Math.floor(10000 + Math.random() * 90000)}`;
     const newBooking: Booking = {
       id: `bk-${Date.now()}`,
       bookingNumber,
       customerId: user?.id || `guest-${Date.now()}`,
       customerName: user?.name || 'Guest Customer',
-      customerPhone: user?.phone || '+92 300 1234567',
+      customerPhone: user?.phone || (isAustralia ? '+61 400 123 456' : '+92 300 1234567'),
       customerEmail: user?.email || 'guest@homebiz.pk',
       vendorId: vendor.id,
       vendorName: vendor.businessName,
@@ -143,7 +152,7 @@ export function BookingPage() {
       discount: 0,
       total: grandTotal,
       status: 'CONFIRMED',
-      paymentStatus: finalPaymentMethod === 'CASH_ON_DELIVERY' ? 'PENDING' : 'PAID',
+      paymentStatus: (finalPaymentMethod === 'PAYPAL' || finalPaymentMethod === 'CARD') ? 'PAID' : 'PENDING',
       paymentMethod: finalPaymentMethod,
       transactionId: txnId,
       createdAt: new Date().toISOString(),
@@ -163,7 +172,7 @@ export function BookingPage() {
 
   const handleConfirmOrder = () => {
     // Online escrow payment methods open the PaymentGateway modal
-    if (paymentMethod === 'JAZZCASH_EASYPAISA' || paymentMethod === 'CARD' || paymentMethod === 'BANK_TRANSFER') {
+    if (paymentMethod === 'PAYPAL' || paymentMethod === 'JAZZCASH_EASYPAISA' || paymentMethod === 'CARD' || paymentMethod === 'BANK_TRANSFER') {
       setShowPaymentGateway(true);
     } else {
       createAndSaveBooking();
@@ -174,8 +183,9 @@ export function BookingPage() {
     setShowPaymentGateway(false);
     setPendingTransactionId(result.transactionId);
 
-    let resolvedMethod: Booking['paymentMethod'] = 'JAZZCASH_EASYPAISA';
-    if (result.paymentMethod === 'BANK_TRANSFER') resolvedMethod = 'BANK_TRANSFER';
+    let resolvedMethod: Booking['paymentMethod'] = 'PAYPAL';
+    if (result.paymentMethod === 'PAYPAL') resolvedMethod = 'PAYPAL';
+    else if (result.paymentMethod === 'BANK_TRANSFER') resolvedMethod = 'BANK_TRANSFER';
     else if (result.paymentMethod === 'CARD') resolvedMethod = 'CARD';
     else if (result.paymentMethod === 'JAZZ_CASH' || result.paymentMethod === 'EASYPAISA') resolvedMethod = 'JAZZCASH_EASYPAISA';
 
@@ -192,11 +202,17 @@ export function BookingPage() {
           planName={`${selectedService?.title || initialService.title} by ${vendor.businessName}`}
           amount={grandTotal}
           planSlug={selectedService?.id || initialService.id}
+          currency={bookingCurrency}
+          isAustralia={isAustralia}
           initialMethod={
-            paymentMethod === 'BANK_TRANSFER'
+            paymentMethod === 'PAYPAL'
+              ? 'paypal'
+              : paymentMethod === 'BANK_TRANSFER'
               ? 'bank_transfer'
               : paymentMethod === 'CARD'
               ? 'card'
+              : isAustralia
+              ? 'paypal'
               : 'jazz_cash'
           }
           onSuccess={handlePaymentSuccess}
@@ -549,21 +565,21 @@ export function BookingPage() {
           <div className="space-y-2 border-y border-[#f4f3f2] py-4 text-xs">
             <div className="flex justify-between">
               <span className="text-[#404944]">Base Service Fee</span>
-              <span className="font-semibold text-stone-900">Rs. {subtotal.toLocaleString()}</span>
+              <span className="font-semibold text-stone-900">{formatCurrency(subtotal, bookingCurrency)}</span>
             </div>
             {selectedAddons.map((addon) => (
               <div key={addon.id} className="flex justify-between">
                 <span className="text-[#404944]">+ {addon.name}</span>
-                <span className="font-semibold text-stone-900">Rs. {addon.price.toLocaleString()}</span>
+                <span className="font-semibold text-stone-900">{formatCurrency(addon.price, bookingCurrency)}</span>
               </div>
             ))}
             <div className="flex justify-between">
               <span className="text-[#404944]">HomeBiz SafeGuarantee Protection</span>
-              <span className="font-semibold text-stone-900">Rs. {platformFee.toLocaleString()}</span>
+              <span className="font-semibold text-stone-900">{formatCurrency(platformFee, bookingCurrency)}</span>
             </div>
             <div className="flex justify-between text-sm font-black text-[#003527] pt-2 border-t border-[#f4f3f2]">
-              <span>Total Payable (PKR)</span>
-              <span>Rs. {grandTotal.toLocaleString()}</span>
+              <span>Total Payable ({bookingCurrency})</span>
+              <span>{formatCurrency(grandTotal, bookingCurrency)}</span>
             </div>
           </div>
 
@@ -588,42 +604,84 @@ export function BookingPage() {
       {/* STEP 5: PAYMENT METHOD */}
       {step === 5 && (
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#e3e2e1] shadow-xs space-y-6 animate-fade-in">
-          <div>
-            <h2 className="text-xl font-black text-[#1a1c1c] font-['Plus_Jakarta_Sans']">
-              Select Payment Method
-            </h2>
-            <p className="text-xs text-[#665d55]">Total Amount: Rs. {grandTotal.toLocaleString()}</p>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h2 className="text-xl font-black text-[#1a1c1c] font-['Plus_Jakarta_Sans']">
+                Select Payment Method
+              </h2>
+              <p className="text-xs text-[#665d55]">Total Amount: {formatCurrency(grandTotal, bookingCurrency)}</p>
+            </div>
+            {isAustralia && (
+              <span className="text-xs bg-blue-50 text-blue-700 font-bold px-3 py-1 rounded-full border border-blue-200">
+                🇦🇺 Australian Order (Pay in AUD)
+              </span>
+            )}
           </div>
 
           <div className="space-y-3">
-            {[
-              {
-                id: 'CASH_ON_DELIVERY',
-                title: 'Cash on Delivery (COD)',
-                desc: 'Pay cash in PKR directly to creator upon receipt.',
-              },
-              {
-                id: 'JAZZCASH_EASYPAISA',
-                title: 'JazzCash / Easypaisa Mobile Wallet',
-                desc: 'Instant mobile account payment with receipt confirmation.',
-              },
-              {
-                id: 'BANK_TRANSFER',
-                title: 'Direct Online Bank Transfer (IBFT)',
-                desc: 'Transfer directly to verified HomeBiz escrow account.',
-              },
-              {
-                id: 'CARD',
-                title: 'Visa / Mastercard Debit Card',
-                desc: 'Encrypted payment gateway serving Pakistan and Australia.',
-              },
-            ].map((method) => {
+            {(isAustralia
+              ? [
+                  {
+                    id: 'PAYPAL',
+                    title: '🅿️ PayPal (Australia & International)',
+                    desc: 'Instant checkout in AUD via PayPal balance, card, or linked Australian bank with Buyer Protection.',
+                    badge: '🇦🇺 Recommended for Australia',
+                    badgeClass: 'bg-[#ffc439] text-[#003087]',
+                  },
+                  {
+                    id: 'CARD',
+                    title: '💳 Visa / Mastercard / Amex Debit Card',
+                    desc: 'Encrypted credit or debit card gateway in AUD.',
+                  },
+                  {
+                    id: 'BANK_TRANSFER',
+                    title: '🏛️ Bank Transfer / Askari Bank Escrow',
+                    desc: 'Official platform bank transfer with receipt verification.',
+                  },
+                  {
+                    id: 'CASH_ON_DELIVERY',
+                    title: '💵 Cash on Delivery (COD)',
+                    desc: 'Pay cash in AUD directly to creator upon doorstep delivery.',
+                  },
+                ]
+              : [
+                  {
+                    id: 'CASH_ON_DELIVERY',
+                    title: 'Cash on Delivery (COD)',
+                    desc: 'Pay cash in PKR directly to creator upon receipt.',
+                  },
+                  {
+                    id: 'JAZZCASH_EASYPAISA',
+                    title: 'JazzCash / Easypaisa Mobile Wallet',
+                    desc: 'Instant mobile account payment (0309 2266482 - Erum Nazir).',
+                  },
+                  {
+                    id: 'BANK_TRANSFER',
+                    title: 'Direct Online Bank Transfer (IBFT)',
+                    desc: 'Transfer directly to verified Askari Commercial Bank escrow account.',
+                  },
+                  {
+                    id: 'CARD',
+                    title: 'Visa / Mastercard Debit Card',
+                    desc: 'Encrypted payment gateway serving Pakistan and international cards.',
+                  },
+                  {
+                    id: 'PAYPAL',
+                    title: '🅿️ PayPal (Overseas / Australian Buyers)',
+                    desc: 'Ordering from Australia or abroad for family in Pakistan? Pay via PayPal.',
+                    badge: '🌍 International',
+                    badgeClass: 'bg-blue-100 text-[#003087]',
+                  },
+                ]
+            ).map((method) => {
               const isSelected = paymentMethod === method.id;
               return (
                 <label
                   key={method.id}
-                  className={`flex items-start gap-3 p-4 rounded-2xl border-2 cursor-pointer transition-colors ${isSelected
-                    ? 'border-[#003527] bg-[#b0f0d6]/10'
+                  className={`flex items-start gap-3 p-4 rounded-2xl border-2 cursor-pointer transition-all ${isSelected
+                    ? method.id === 'PAYPAL'
+                      ? 'border-[#0070ba] bg-[#0070ba]/5 ring-1 ring-[#0070ba]/20'
+                      : 'border-[#003527] bg-[#b0f0d6]/10'
                     : 'border-[#e3e2e1] hover:border-stone-300'
                     }`}
                 >
@@ -634,11 +692,18 @@ export function BookingPage() {
                     onChange={() => setPaymentMethod(method.id as any)}
                     className="mt-0.5 text-[#003527] focus:ring-[#003527]"
                   />
-                  <div>
-                    <span className="font-bold text-xs sm:text-sm text-[#1a1c1c] block">
-                      {method.title}
-                    </span>
-                    <span className="text-xs text-[#665d55]">{method.desc}</span>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between flex-wrap gap-1">
+                      <span className="font-bold text-xs sm:text-sm text-[#1a1c1c] block">
+                        {method.title}
+                      </span>
+                      {'badge' in method && method.badge && (
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${'badgeClass' in method ? (method as any).badgeClass : 'bg-emerald-100 text-emerald-800'}`}>
+                          {method.badge}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-[#665d55] mt-0.5 block">{method.desc}</span>
                   </div>
                 </label>
               );
@@ -654,9 +719,13 @@ export function BookingPage() {
             </button>
             <button
               onClick={handleConfirmOrder}
-              className="px-8 py-3.5 rounded-full bg-[#003527] hover:bg-[#064e3b] text-white font-extrabold text-xs sm:text-sm shadow-xl flex items-center gap-2 transform hover:scale-105 transition-all"
+              className={`px-8 py-3.5 rounded-full text-white font-extrabold text-xs sm:text-sm shadow-xl flex items-center gap-2 transform hover:scale-105 transition-all ${
+                paymentMethod === 'PAYPAL'
+                  ? 'bg-[#0070ba] hover:bg-[#003087]'
+                  : 'bg-[#003527] hover:bg-[#064e3b]'
+              }`}
             >
-              <span>Confirm & Place Order</span>
+              <span>{paymentMethod === 'PAYPAL' ? 'Proceed with PayPal' : 'Confirm & Place Order'}</span>
               <CheckCircle className="w-4 h-4 text-[#ffe088]" />
             </button>
           </div>
@@ -694,12 +763,30 @@ export function BookingPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-[#665d55]">Total Amount:</span>
-              <span className="font-extrabold text-stone-900">Rs. {createdBooking.total.toLocaleString()}</span>
+              <span className="font-extrabold text-stone-900">{formatCurrency(createdBooking.total, bookingCurrency)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-[#665d55]">Payment Method:</span>
-              <span className="font-semibold text-stone-800">{createdBooking.paymentMethod}</span>
+              <span className="font-semibold text-stone-800">
+                {createdBooking.paymentMethod === 'PAYPAL' ? '🅿️ PayPal (Live Automatic)' : createdBooking.paymentMethod}
+              </span>
             </div>
+            <div className="flex justify-between items-center">
+              <span className="text-[#665d55]">Payment Status:</span>
+              <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
+                createdBooking.paymentStatus === 'PAID'
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : 'bg-amber-100 text-amber-800'
+              }`}>
+                {createdBooking.paymentStatus === 'PAID' ? '✓ Paid (Live Verified)' : '⏳ Verification Pending'}
+              </span>
+            </div>
+            {createdBooking.transactionId && (
+              <div className="flex justify-between">
+                <span className="text-[#665d55]">Transaction Ref:</span>
+                <span className="font-mono text-emerald-700 text-[11px] font-bold">{createdBooking.transactionId}</span>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-3 pt-4">
@@ -709,12 +796,23 @@ export function BookingPage() {
             >
               View in My Bookings
             </Link>
-            <Link
-              href="/customer/dashboard/messages"
-              className="px-6 py-3 rounded-full border border-[#003527] text-[#003527] hover:bg-[#003527]/5 font-bold text-xs"
+            <button
+              onClick={() => {
+                if (user) {
+                  const conv = Storage.getOrCreateConversation(user.id, vendor.id, {
+                    type: 'BOOKING',
+                    id: createdBooking.id,
+                    title: `Order #${createdBooking.bookingNumber} (${createdBooking.serviceTitle})`,
+                  });
+                  router.push(`/customer/dashboard/messages?convId=${conv.id}`);
+                } else {
+                  router.push('/customer/dashboard/messages');
+                }
+              }}
+              className="px-6 py-3 rounded-full border border-[#003527] text-[#003527] hover:bg-[#003527]/5 font-bold text-xs cursor-pointer"
             >
               Chat with Creator
-            </Link>
+            </button>
           </div>
         </div>
       )}

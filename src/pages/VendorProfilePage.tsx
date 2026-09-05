@@ -45,12 +45,12 @@ export function VendorProfilePage() {
       return;
     }
 
-    Storage.getOrCreateConversation(user.id, vendor.id, {
+    const conv = Storage.getOrCreateConversation(user.id, vendor.id, {
       type: 'GENERAL',
       id: vendor.id,
       title: `Inquiry: ${vendor.businessName}`,
     });
-    router.push(role === 'SELLER' ? '/seller/dashboard/messages' : '/customer/dashboard/messages');
+    router.push(role === 'SELLER' ? `/seller/dashboard/messages?convId=${conv.id}` : `/customer/dashboard/messages?convId=${conv.id}`);
   };
 
   const handleBookService = (serviceId: string) => {

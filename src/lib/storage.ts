@@ -17,6 +17,7 @@ import {
   PricingPlan,
   SellerSubscription,
   SubscriptionPlan,
+  UserRole,
 } from '../types';
 import {
   SEED_USERS,
@@ -200,6 +201,60 @@ export const Storage = {
   getVendorById: (id: string): VendorProfile | undefined => Storage.getVendors().find((v) => v.id === id),
   getVendorBySlug: (slug: string): VendorProfile | undefined => Storage.getVendors().find((v) => v.slug === slug),
   getVendorByUserId: (userId: string): VendorProfile | undefined => Storage.getVendors().find((v) => v.userId === userId),
+  getSellerVendor: (userId: string): VendorProfile | undefined => {
+    const user = Storage.getUserById(userId);
+    return (
+      Storage.getVendors().find(
+        (v) => v.userId === userId || (user?.sellerProfileId && v.id === user.sellerProfileId)
+      ) || (user?.sellerProfileId ? Storage.getVendorById(user.sellerProfileId) : undefined)
+    );
+  },
+  ensureSellerVendor: (user: User): VendorProfile => {
+    const existing = Storage.getSellerVendor(user.id);
+    if (existing) return existing;
+
+    const vendorId = user.sellerProfileId || `vendor-${user.id}`;
+    const newVendor: VendorProfile = {
+      id: vendorId,
+      userId: user.id,
+      businessName: user.name ? `${user.name}'s Studio` : 'My Home Studio',
+      slug: (user.name || 'seller').toLowerCase().replace(/[^a-z0-9]+/g, '-') + `-${Date.now().toString().slice(-4)}`,
+      tagline: `Quality homemade bespoke creations by ${user.name || 'Seller'}`,
+      description: `Welcome to our storefront! We offer handcrafted bespoke orders prepared with premium quality and care.`,
+      category: 'cakes-baking',
+      subcategories: ['Custom Orders', 'Handcrafted Goods'],
+      city: user.city || 'Lahore',
+      locality: `${user.city || 'Lahore'} Central`,
+      showExactAddress: false,
+      coverImage: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=1200&q=80',
+      avatar: user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+      gallery: [
+        'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=800&q=80',
+      ],
+      startingPrice: 2000,
+      rating: 5.0,
+      reviewCount: 0,
+      responseTime: '< 30 mins',
+      experienceYears: 1,
+      status: 'APPROVED',
+      verificationStatus: 'VERIFIED',
+      isFeatured: false,
+      serviceAreas: [user.city || 'Lahore'],
+      specialties: ['Custom Design', 'Fresh Delivery'],
+      services: [],
+      availabilityNotice: 'Accepting custom inquiries',
+      coordinates: { lat: 31.5204, lng: 74.3587 },
+      currentPlan: 'free',
+      createdAt: new Date().toISOString(),
+    };
+
+    Storage.saveVendor(newVendor);
+    if (!user.sellerProfileId) {
+      user.sellerProfileId = newVendor.id;
+      Storage.saveUser(user);
+    }
+    return newVendor;
+  },
   saveVendor: (vendor: VendorProfile): void => {
     const vendors = Storage.getVendors();
     const idx = vendors.findIndex((v) => v.id === vendor.id);
@@ -277,6 +332,34 @@ export const Storage = {
         title: `Booking Update: ${status} 📋`,
         message: `Your booking #${booking.bookingNumber} with ${booking.vendorName} is now ${status.toLowerCase()}.`,
         type: status === 'CONFIRMED' ? 'BOOKING_CONFIRMED' : 'BOOKING_CANCELLED',
+        link: '/customer/dashboard/bookings',
+        read: false,
+        createdAt: new Date().toISOString(),
+      });
+    }
+  },
+  updateBookingPaymentStatus: (id: string, paymentStatus: Booking['paymentStatus']): void => {
+    const bookings = Storage.getBookings();
+    const booking = bookings.find((b) => b.id === id);
+    if (booking) {
+      booking.paymentStatus = paymentStatus;
+      if (paymentStatus === 'FAILED') {
+        booking.status = 'CANCELLED';
+      } else if (paymentStatus === 'PAID' && booking.status === 'PENDING') {
+        booking.status = 'CONFIRMED';
+      }
+      safeSetItem(STORAGE_KEYS.BOOKINGS, bookings);
+
+      // Notify customer
+      Storage.createNotification({
+        id: `notif-${Date.now()}`,
+        userId: booking.customerId,
+        title: paymentStatus === 'PAID' ? 'Payment Verified & Confirmed! 💰' : 'Payment Verification Issue ⚠️',
+        message:
+          paymentStatus === 'PAID'
+            ? `Your payment for booking #${booking.bookingNumber} has been successfully verified and confirmed.`
+            : `Your payment reference for booking #${booking.bookingNumber} could not be verified. Please re-check or contact creator.`,
+        type: paymentStatus === 'PAID' ? 'BOOKING_CONFIRMED' : 'BOOKING_CANCELLED',
         link: '/customer/dashboard/bookings',
         read: false,
         createdAt: new Date().toISOString(),
@@ -416,64 +499,144 @@ export const Storage = {
 
   // Conversations & Messages
   getConversations: (): Conversation[] => safeGetItem(STORAGE_KEYS.CONVERSATIONS, SEED_CONVERSATIONS),
+  getConversationsForUser: (userId: string, role: UserRole): Conversation[] => {
+    if (!userId) return [];
+    const all = Storage.getConversations();
+
+    if (role === 'ADMIN') {
+      return all;
+    }
+
+    if (role === 'SELLER') {
+      const sellerVendor = Storage.getSellerVendor(userId);
+      const user = Storage.getUserById(userId);
+      const vendorId = sellerVendor?.id || user?.sellerProfileId;
+
+      return all.filter((c) => {
+        // Direct vendor ID match
+        if (vendorId && c.vendorId === vendorId) return true;
+        // User ID matches vendorId
+        if (c.vendorId === userId) return true;
+        // Vendor owner user ID matches
+        if (c.vendorUserId && c.vendorUserId === userId) return true;
+        // Check participants
+        if (
+          c.participants?.some(
+            (p) => p.role === 'SELLER' && (p.id === userId || (vendorId && p.id === vendorId))
+          )
+        ) {
+          return true;
+        }
+        return false;
+      });
+    }
+
+    // CUSTOMER role
+    return all.filter((c) => {
+      if (c.customerId === userId) return true;
+      if (c.participants?.some((p) => p.role === 'CUSTOMER' && p.id === userId)) return true;
+      return false;
+    });
+  },
+  getUnreadCountForUser: (userId: string, role: UserRole): number => {
+    if (!userId) return 0;
+    const userConvs = Storage.getConversationsForUser(userId, role);
+    return userConvs.reduce((acc, c) => {
+      if (role === 'SELLER') {
+        return acc + (c.unreadCountVendor || 0);
+      }
+      return acc + (c.unreadCountCustomer || 0);
+    }, 0);
+  },
   getMessages: (conversationId?: string): Message[] => {
     const all = safeGetItem<Message[]>(STORAGE_KEYS.MESSAGES, SEED_MESSAGES);
     if (!conversationId) return all;
     return all.filter((m) => m.conversationId === conversationId);
   },
   sendMessage: (msg: Omit<Message, 'id' | 'createdAt' | 'read'>): Message => {
+    const conversations = Storage.getConversations();
+    const conv = conversations.find((c) => c.id === msg.conversationId);
+
+    // Resolve recipient and store IDs
+    let recipientId = msg.recipientId;
+    let vendorId = msg.vendorId || conv?.vendorId;
+
+    const vendor =
+      (conv?.vendorId && Storage.getVendorById(conv.vendorId)) ||
+      (conv?.vendorId && Storage.getVendors().find((v) => v.id === conv.vendorId || v.userId === conv.vendorId)) ||
+      undefined;
+
+    const sellerUserId =
+      conv?.vendorUserId ||
+      vendor?.userId ||
+      conv?.participants.find((p) => p.role === 'SELLER')?.id ||
+      'user-v1';
+
+    const customerUserId =
+      conv?.customerId ||
+      conv?.participants.find((p) => p.role === 'CUSTOMER')?.id ||
+      'user-c1';
+
+    if (!recipientId) {
+      recipientId = msg.senderRole === 'CUSTOMER' ? sellerUserId : customerUserId;
+    }
+
+    const timestamp = new Date().toISOString();
     const newMsg: Message = {
       ...msg,
-      id: `msg-${Date.now()}`,
-      createdAt: new Date().toISOString(),
+      id: `msg-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      recipientId,
+      vendorId,
+      createdAt: timestamp,
+      timestamp,
       read: false,
     };
+
     const messages = safeGetItem<Message[]>(STORAGE_KEYS.MESSAGES, SEED_MESSAGES);
     messages.push(newMsg);
     safeSetItem(STORAGE_KEYS.MESSAGES, messages);
 
     // Update conversation last message and unread count locally
-    const conversations = Storage.getConversations();
-    const conv = conversations.find((c) => c.id === msg.conversationId);
     if (conv) {
       conv.lastMessage = msg.text;
-      conv.lastMessageAt = newMsg.createdAt;
+      conv.lastMessageAt = timestamp;
+      if (vendorId && !conv.vendorId) conv.vendorId = vendorId;
+      if (sellerUserId && !conv.vendorUserId) conv.vendorUserId = sellerUserId;
+
+      const preview = msg.text.length > 60 ? msg.text.slice(0, 57) + '...' : msg.text;
 
       if (msg.senderRole === 'CUSTOMER') {
         conv.unreadCountVendor = (conv.unreadCountVendor || 0) + 1;
 
-        // Send notification to seller
-        const vendor =
-          Storage.getVendorById(conv.vendorId) ||
-          Storage.getVendors().find((v) => v.id === conv.vendorId || v.userId === conv.participants.find((p) => p.role === 'SELLER')?.id);
-        const sellerUserId = vendor?.userId || conv.participants.find((p) => p.role === 'SELLER')?.id;
-
+        // Send notification to seller with REAL customer name
+        const customerName = msg.senderName || conv.customerName || 'Customer';
         if (sellerUserId) {
           Storage.createNotification({
-            id: `notif-${Date.now()}`,
+            id: `notif-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
             userId: sellerUserId,
-            title: `New message from ${msg.senderName} 💬`,
-            message: msg.text.length > 80 ? msg.text.slice(0, 77) + '...' : msg.text,
-            type: 'GENERAL',
-            link: '/seller/dashboard/messages',
+            title: '🔔 New Message',
+            message: `New message from ${customerName}: "${preview}"`,
+            type: 'NEW_MESSAGE',
+            link: `/seller/dashboard/messages?convId=${conv.id}`,
             read: false,
-            createdAt: new Date().toISOString(),
+            createdAt: timestamp,
           });
         }
       } else {
         conv.unreadCountCustomer = (conv.unreadCountCustomer || 0) + 1;
 
-        // Send notification to customer
-        if (conv.customerId) {
+        // Send notification to customer with REAL business name
+        const businessName = vendor?.businessName || conv.vendorName || msg.senderName || 'Seller';
+        if (customerUserId) {
           Storage.createNotification({
-            id: `notif-${Date.now()}`,
-            userId: conv.customerId,
-            title: `New message from ${msg.senderName} 💬`,
-            message: msg.text.length > 80 ? msg.text.slice(0, 77) + '...' : msg.text,
-            type: 'GENERAL',
-            link: '/customer/dashboard/messages',
+            id: `notif-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            userId: customerUserId,
+            title: '🔔 New Message',
+            message: `New message from ${businessName}: "${preview}"`,
+            type: 'NEW_MESSAGE',
+            link: `/customer/dashboard/messages?convId=${conv.id}`,
             read: false,
-            createdAt: new Date().toISOString(),
+            createdAt: timestamp,
           });
         }
       }
@@ -488,15 +651,51 @@ export const Storage = {
     return newMsg;
   },
   markConversationAsRead: (conversationId: string, role: 'CUSTOMER' | 'SELLER'): void => {
+    let convChanged = false;
     const conversations = Storage.getConversations();
     const conv = conversations.find((c) => c.id === conversationId);
     if (conv) {
-      if (role === 'SELLER') {
+      if (role === 'SELLER' && (conv.unreadCountVendor || 0) > 0) {
         conv.unreadCountVendor = 0;
-      } else {
+        convChanged = true;
+      } else if (role === 'CUSTOMER' && (conv.unreadCountCustomer || 0) > 0) {
         conv.unreadCountCustomer = 0;
+        convChanged = true;
       }
-      safeSetItem(STORAGE_KEYS.CONVERSATIONS, conversations);
+      if (convChanged) {
+        safeSetItem(STORAGE_KEYS.CONVERSATIONS, conversations);
+      }
+    }
+
+    // Mark opposing messages in this conversation as read
+    const allMessages = safeGetItem<Message[]>(STORAGE_KEYS.MESSAGES, SEED_MESSAGES);
+    let msgChanged = false;
+    allMessages.forEach((m) => {
+      if (m.conversationId === conversationId && !m.read) {
+        if (role === 'SELLER' && m.senderRole === 'CUSTOMER') {
+          m.read = true;
+          msgChanged = true;
+        } else if (role === 'CUSTOMER' && m.senderRole === 'SELLER') {
+          m.read = true;
+          msgChanged = true;
+        }
+      }
+    });
+    if (msgChanged) {
+      safeSetItem(STORAGE_KEYS.MESSAGES, allMessages);
+    }
+
+    // Mark unread message notifications for this conversation as read
+    const allNotifs = safeGetItem<Notification[]>(STORAGE_KEYS.NOTIFICATIONS, SEED_NOTIFICATIONS);
+    let notifChanged = false;
+    allNotifs.forEach((n) => {
+      if (n.type === 'NEW_MESSAGE' && !n.read && n.link && n.link.includes(conversationId)) {
+        n.read = true;
+        notifChanged = true;
+      }
+    });
+    if (notifChanged) {
+      safeSetItem(STORAGE_KEYS.NOTIFICATIONS, allNotifs);
     }
   },
   // Called by Supabase Realtime handler to append incoming messages from other users
@@ -525,17 +724,33 @@ export const Storage = {
     context?: { type: 'BOOKING' | 'REQUEST' | 'GENERAL'; id: string; title: string }
   ): Conversation => {
     const conversations = Storage.getConversations();
-    let conv = conversations.find((c) => c.customerId === customerId && c.vendorId === vendorId);
+    const customer = Storage.getUserById(customerId);
+    const vendor =
+      Storage.getVendorById(vendorId) ||
+      Storage.getVendorByUserId(vendorId) ||
+      Storage.getVendors().find((v) => v.id === vendorId || v.userId === vendorId);
+
+    const canonicalVendorId = vendor ? vendor.id : vendorId;
+    const sellerUserId = vendor?.userId || (vendorId.startsWith('user-') ? vendorId : 'user-v1');
+
+    let conv = conversations.find(
+      (c) =>
+        (c.customerId === customerId || c.participants?.some((p) => p.role === 'CUSTOMER' && p.id === customerId)) &&
+        (c.vendorId === canonicalVendorId ||
+          c.vendorId === vendorId ||
+          c.vendorUserId === sellerUserId ||
+          c.participants?.some((p) => p.role === 'SELLER' && (p.id === sellerUserId || p.id === canonicalVendorId)))
+    );
+
     if (!conv) {
-      const customer = Storage.getUserById(customerId);
-      const vendor = Storage.getVendorById(vendorId) || Storage.getVendors().find((v) => v.id === vendorId || v.userId === vendorId);
       conv = {
-        id: `conv-${Date.now()}`,
+        id: `conv-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         participants: [
           { id: customerId, name: customer?.name || 'Customer', avatar: customer?.avatar, role: 'CUSTOMER' },
-          { id: vendor?.userId || 'vendor', name: vendor?.businessName || 'Seller', avatar: vendor?.avatar, role: 'SELLER' },
+          { id: sellerUserId, name: vendor?.businessName || 'Seller', avatar: vendor?.avatar, role: 'SELLER' },
         ],
-        vendorId,
+        vendorId: canonicalVendorId,
+        vendorUserId: sellerUserId,
         vendorName: vendor?.businessName,
         vendorAvatar: vendor?.avatar,
         customerId,
@@ -551,10 +766,17 @@ export const Storage = {
       };
       conversations.unshift(conv);
       safeSetItem(STORAGE_KEYS.CONVERSATIONS, conversations);
-    } else if (context) {
-      conv.contextType = context.type;
-      conv.contextId = context.id;
-      conv.contextTitle = context.title;
+    } else {
+      if (!conv.vendorId) conv.vendorId = canonicalVendorId;
+      if (!conv.vendorUserId) conv.vendorUserId = sellerUserId;
+      if (!conv.vendorName && vendor?.businessName) conv.vendorName = vendor.businessName;
+      if (!conv.customerName && customer?.name) conv.customerName = customer.name;
+
+      if (context) {
+        conv.contextType = context.type;
+        conv.contextId = context.id;
+        conv.contextTitle = context.title;
+      }
       safeSetItem(STORAGE_KEYS.CONVERSATIONS, conversations);
     }
     return conv;

@@ -31,7 +31,8 @@ export type NotificationType =
   | 'NEW_MESSAGE'
   | 'REVIEW_REMINDER'
   | 'VENDOR_APPROVAL'
-  | 'SYSTEM_ANNOUNCEMENT';
+  | 'SYSTEM_ANNOUNCEMENT'
+  | 'GENERAL';
 
 export interface User {
   id: string;
@@ -151,7 +152,7 @@ export interface Booking {
   total: number;
   status: BookingStatus;
   paymentStatus: PaymentStatus;
-  paymentMethod: 'CASH_ON_DELIVERY' | 'BANK_TRANSFER' | 'JAZZCASH_EASYPAISA' | 'CARD';
+  paymentMethod: 'CASH_ON_DELIVERY' | 'BANK_TRANSFER' | 'JAZZCASH_EASYPAISA' | 'CARD' | 'PAYPAL';
   transactionId?: string;
   createdAt: string;
   reviewId?: string;
@@ -211,6 +212,8 @@ export interface Message {
   senderId: string;
   senderName: string;
   senderRole: UserRole;
+  recipientId?: string;
+  vendorId?: string;
   text: string;
   attachmentUrl?: string;
   createdAt: string;
@@ -227,6 +230,7 @@ export interface Conversation {
     role: UserRole;
   }[];
   vendorId?: string;
+  vendorUserId?: string;
   vendorName?: string;
   vendorAvatar?: string;
   customerId?: string;
@@ -350,7 +354,7 @@ export interface SellerSubscription {
   priceAtPurchase: number;
   startDate: string;
   renewalDate: string;
-  paymentMethod: 'JAZZ_CASH' | 'EASYPAISA' | 'CARD' | 'BANK_TRANSFER' | 'MANUAL';
+  paymentMethod: 'JAZZ_CASH' | 'EASYPAISA' | 'CARD' | 'BANK_TRANSFER' | 'PAYPAL' | 'MANUAL';
   paymentStatus: PaymentStatus;
   transactionId?: string;
   providerReference?: string;

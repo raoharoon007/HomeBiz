@@ -5,6 +5,7 @@ import { PricingPlan } from '../../types';
 import { useRouter, useSearchParams } from '../../lib/navigation';
 import { useAuth } from '../../lib/authContext';
 import { PaymentGateway, PaymentResult } from './PaymentGateway';
+import { isAustralianLocation, formatCurrency, SupportedCurrency, REGIONAL_PLAN_PRICING } from '../../lib/countryUtils';
 
 interface PricingCardsProps {
     onSelectPlan?: (planId: string) => void;
@@ -32,6 +33,14 @@ export function PricingCards({
     const router = useRouter();
     const searchParams = useSearchParams();
     const { user } = useAuth();
+    const isSellerInAustralia = isAustralianLocation(user?.city);
+    const [regionCurrency, setRegionCurrency] = useState<SupportedCurrency>(isSellerInAustralia ? 'AUD' : 'PKR');
+
+    useEffect(() => {
+        if (user?.city && isAustralianLocation(user.city)) {
+            setRegionCurrency('AUD');
+        }
+    }, [user?.city]);
 
     useEffect(() => {
         const pricingPlans = Storage.getPricingPlans();
@@ -69,6 +78,13 @@ export function PricingCards({
     };
 
     const currentPrice = (plan: PricingPlan) => {
+        if (plan.slug === 'free') return 0;
+        if (regionCurrency === 'AUD') {
+            const aud = REGIONAL_PLAN_PRICING.AUD[plan.slug as 'pro' | 'featured'];
+            if (aud) {
+                return billingPeriod === 'monthly' ? aud.monthly : aud.yearly;
+            }
+        }
         return billingPeriod === 'monthly' ? plan.priceMonthly : plan.priceYearly;
     };
 
@@ -171,10 +187,33 @@ export function PricingCards({
 
     return (
         <div className="w-full space-y-12">
-            {/* Billing Toggle */}
-            {showToggle && (
-                <div className="flex justify-center">
-                    <div className="inline-flex items-center gap-3 bg-[#f4f3f2] p-1 rounded-full">
+            {/* Currency & Billing Toggles */}
+            <div className="flex flex-col items-center justify-center gap-4">
+                {/* Region / Currency Selector */}
+                <div className="inline-flex items-center gap-1 bg-[#f4f3f2] p-1.5 rounded-full border border-[#e3e2e1] shadow-xs">
+                    <button
+                        type="button"
+                        onClick={() => setRegionCurrency('PKR')}
+                        className={`cursor-pointer px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${
+                            regionCurrency === 'PKR' ? 'bg-white text-[#003527] shadow-xs' : 'text-[#665d55] hover:text-[#1a1c1c]'
+                        }`}
+                    >
+                        <span>🇵🇰 Pakistan (PKR)</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setRegionCurrency('AUD')}
+                        className={`cursor-pointer px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${
+                            regionCurrency === 'AUD' ? 'bg-[#0070ba] text-white shadow-xs' : 'text-[#665d55] hover:text-[#1a1c1c]'
+                        }`}
+                    >
+                        <span>🇦🇺 Australia (AUD • PayPal)</span>
+                    </button>
+                </div>
+
+                {/* Billing Toggle */}
+                {showToggle && (
+                    <div className="inline-flex items-center gap-3 bg-[#f4f3f2] p-1 rounded-full border border-[#e3e2e1]">
                         <button
                             onClick={() => setBillingPeriod('monthly')}
                             className={`cursor-pointer px-6 py-2 rounded-full text-xs font-bold transition-all ${billingPeriod === 'monthly'
@@ -194,8 +233,8 @@ export function PricingCards({
                             Yearly <span className="text-[#cca72f]">Save 17%</span>
                         </button>
                     </div>
-                </div>
-            )}
+                )}
+            </div>
 
             {/* Pricing Cards Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
@@ -233,16 +272,21 @@ export function PricingCards({
                                     <>
                                         <div className="flex items-baseline gap-1">
                                             <span className="text-3xl font-black text-[#003527] font-['Plus_Jakarta_Sans']">
-                                                PKR {currentPrice(plan).toLocaleString()}
+                                                {formatCurrency(currentPrice(plan), regionCurrency)}
                                             </span>
                                             <span className="text-xs text-[#665d55]">
                                                 /{billingPeriod === 'monthly' ? 'month' : 'year'}
                                             </span>
                                         </div>
-                                        {plan.priceYearly > 0 && billingPeriod === 'yearly' && (
+                                        {billingPeriod === 'yearly' && (
                                             <p className="text-xs text-[#cca72f] font-semibold mt-1">
-                                                💰 Save PKR {(plan.priceMonthly * 12 - plan.priceYearly).toLocaleString()} yearly
+                                                💰 Save {formatCurrency(regionCurrency === 'AUD' ? (plan.slug === 'pro' ? 38 : 78) : (plan.priceMonthly * 12 - plan.priceYearly), regionCurrency)} yearly
                                             </p>
+                                        )}
+                                        {regionCurrency === 'AUD' && (
+                                            <div className="mt-2 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-50 text-[#0070ba] text-[10px] font-bold border border-blue-200">
+                                                <span>🅿️ Pay with PayPal in AUD</span>
+                                            </div>
                                         )}
                                     </>
                                 )}
@@ -407,10 +451,13 @@ export function PricingCards({
 
             {checkoutPlan && (
                 <PaymentGateway
-                    planName={checkoutPlan.name}
+                    planName={`${checkoutPlan.name} (${regionCurrency === 'AUD' ? 'Australia' : 'Pakistan'})`}
                     amount={checkoutPlan.amount}
                     planSlug={checkoutPlan.slug}
+                    currency={regionCurrency}
+                    isAustralia={regionCurrency === 'AUD'}
                     billingPeriod={billingPeriod}
+                    initialMethod={regionCurrency === 'AUD' ? 'paypal' : 'jazz_cash'}
                     onSuccess={handlePaymentSuccess}
                     onCancel={() => setCheckoutPlan(null)}
                 />

@@ -16,7 +16,7 @@ export function PricingPage() {
         {
             question: 'What payment methods do you accept?',
             answer:
-                'We accept JazzCash, Easypaisa, and Debit/Credit Cards (Visa, Mastercard). All payments are secure and encrypted.',
+                'We accept PayPal (for Australian & international sellers in AUD), JazzCash, Easypaisa, Askari Bank IBFT, and Debit/Credit Cards (Visa, Mastercard). All transactions are encrypted and secured.',
         },
         {
             question: 'Is there a free plan?',

@@ -31,7 +31,7 @@ export function ChatWindow({ initialConversationId, onBackMobile }: ChatWindowPr
   const searchParams = useSearchParams();
 
   const userVendor = user
-    ? Storage.getVendors().find((v) => v.id === user.sellerProfileId || v.userId === user.id)
+    ? Storage.getSellerVendor(user.id) || (role === 'SELLER' ? Storage.ensureSellerVendor(user) : undefined)
     : null;
 
   const currentUserId = user ? user.id : 'user-c1';
@@ -41,39 +41,14 @@ export function ChatWindow({ initialConversationId, onBackMobile }: ChatWindowPr
       : user.name
     : 'Customer';
 
-  const getUserConversations = (all: Conversation[]) => {
-    if (!user) return [];
-
-    return all.filter((conversation) => {
-      if (role === 'SELLER') {
-        return (
-          conversation.vendorId === user.sellerProfileId ||
-          conversation.vendorId === user.id ||
-          Boolean(userVendor && conversation.vendorId === userVendor.id) ||
-          Boolean(conversation.participants?.some((p) => p.id === user.id || (userVendor && p.id === userVendor.id)))
-        );
-      }
-
-      if (role === 'ADMIN') {
-        return true;
-      }
-
-      return (
-        conversation.customerId === user.id ||
-        Boolean(conversation.participants?.some((p) => p.id === user.id))
-      );
-    });
-  };
-
-  const [conversations, setConversations] = useState<Conversation[]>(() =>
-    getUserConversations(Storage.getConversations())
-  );
+  // Single source of truth: directly derived so it updates on any storage change
+  const conversations = user ? Storage.getConversationsForUser(user.id, role) : [];
 
   const queryConvId = searchParams.get('convId');
   const [activeConvId, setActiveConvId] = useState<string>(() => {
     if (queryConvId) return queryConvId;
     if (initialConversationId) return initialConversationId;
-    const userConvs = getUserConversations(Storage.getConversations());
+    const userConvs = user ? Storage.getConversationsForUser(user.id, role) : [];
     return userConvs[0]?.id || '';
   });
 
@@ -83,31 +58,40 @@ export function ChatWindow({ initialConversationId, onBackMobile }: ChatWindowPr
   const [isGeneratingAiDraft, setIsGeneratingAiDraft] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Sync activeConvId if query param changes
+  // Sync activeConvId if query param changes or conversation list updates
   useEffect(() => {
-    if (queryConvId) {
+    if (queryConvId && conversations.some((c) => c.id === queryConvId)) {
       setActiveConvId(queryConvId);
+      return;
     }
-  }, [queryConvId]);
 
-  // Sync conversation list when storage or auth changes
-  useEffect(() => {
-    const updated = getUserConversations(Storage.getConversations());
-    setConversations(updated);
-
-    if (activeConvId && !updated.some((c) => c.id === activeConvId)) {
-      if (updated.length > 0 && !queryConvId) {
-        setActiveConvId(updated[0].id);
+    if (!activeConvId || !conversations.some((c) => c.id === activeConvId)) {
+      if (conversations.length > 0) {
+        // Prioritize conversation with unread messages for this user
+        const unreadConv = conversations.find((c) =>
+          role === 'SELLER' ? (c.unreadCountVendor || 0) > 0 : (c.unreadCountCustomer || 0) > 0
+        );
+        setActiveConvId(unreadConv ? unreadConv.id : conversations[0].id);
+      } else {
+        setActiveConvId('');
       }
     }
-  }, [currentUserId, role, user?.sellerProfileId, userVendor?.id]);
+  }, [conversations, queryConvId, activeConvId, role]);
 
-  // Mark active conversation as read
+  const activeConv = conversations.find((c) => c.id === activeConvId);
+  const messages = Storage.getMessages(activeConvId);
+
+  // Mark active conversation as read when opened or when messages change
   useEffect(() => {
     if (activeConvId && user) {
-      Storage.markConversationAsRead(activeConvId, role === 'SELLER' ? 'SELLER' : 'CUSTOMER');
+      const currentConv = conversations.find((c) => c.id === activeConvId);
+      const hasUnread =
+        role === 'SELLER' ? (currentConv?.unreadCountVendor || 0) > 0 : (currentConv?.unreadCountCustomer || 0) > 0;
+      if (hasUnread) {
+        Storage.markConversationAsRead(activeConvId, role === 'SELLER' ? 'SELLER' : 'CUSTOMER');
+      }
     }
-  }, [activeConvId, user, role]);
+  }, [activeConvId, user, role, messages.length, conversations]);
 
   // Supabase Realtime — subscribe to new messages in the active conversation
   useEffect(() => {
@@ -150,9 +134,6 @@ export function ChatWindow({ initialConversationId, onBackMobile }: ChatWindowPr
     };
   }, [activeConvId, currentUserId, role]);
 
-  const activeConv = conversations.find((c) => c.id === activeConvId);
-  const messages = Storage.getMessages(activeConvId);
-
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -163,13 +144,22 @@ export function ChatWindow({ initialConversationId, onBackMobile }: ChatWindowPr
 
   const handleSendMessage = (textToSend?: string) => {
     const text = (textToSend || inputMessage).trim();
-    if (!text || !activeConvId) return;
+    let recipientId = '';
+    let vendorId = activeConv?.vendorId;
+
+    if (role === 'SELLER') {
+      recipientId = activeConv?.customerId || activeConv?.participants.find((p) => p.role === 'CUSTOMER')?.id || '';
+    } else {
+      recipientId = activeConv?.vendorUserId || activeConv?.participants.find((p) => p.role === 'SELLER')?.id || '';
+    }
 
     Storage.sendMessage({
       conversationId: activeConvId,
       senderId: currentUserId,
       senderName: currentUserName,
       senderRole: role,
+      recipientId,
+      vendorId,
       text,
     });
 

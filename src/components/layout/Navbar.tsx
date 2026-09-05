@@ -39,37 +39,8 @@ export function Navbar() {
   const notifications = user ? Storage.getNotifications(user.id) : [];
   const unreadNotifs = notifications.filter((n) => !n.read).length;
 
-  const userVendor = user
-    ? Storage.getVendors().find((v) => v.id === user.sellerProfileId || v.userId === user.id)
-    : null;
-
-  const conversations = Storage.getConversations().filter((conversation) => {
-    if (!user) return false;
-    if (role === 'SELLER') {
-      return (
-        conversation.vendorId === user.sellerProfileId ||
-        conversation.vendorId === user.id ||
-        Boolean(userVendor && conversation.vendorId === userVendor.id) ||
-        Boolean(conversation.participants?.some((p) => p.id === user.id || (userVendor && p.id === userVendor.id)))
-      );
-    }
-    if (role === 'ADMIN') {
-      return true;
-    }
-    return conversation.customerId === user.id || Boolean(conversation.participants?.some((p) => p.id === user.id));
-  });
-
-  const unreadMessagesCount = user
-    ? conversations.reduce((acc, c) => {
-      if (role === 'SELLER') {
-        return acc + (c.unreadCountVendor || 0);
-      }
-      if (c.customerId === user.id) {
-        return acc + (c.unreadCountCustomer || 0);
-      }
-      return acc;
-    }, 0)
-    : 0;
+  const conversations = user ? Storage.getConversationsForUser(user.id, role) : [];
+  const unreadMessagesCount = user ? Storage.getUnreadCountForUser(user.id, role) : 0;
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
