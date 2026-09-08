@@ -18,6 +18,8 @@ import {
 import confetti from 'canvas-confetti';
 
 import { useAuth } from '../lib/authContext';
+import { sendSellerVerificationApprovalEmail } from '../lib/emailService';
+import { isAustralianLocation } from '../lib/countryUtils';
 
 export function AdminDashboard() {
   useStorageSubscription();
@@ -49,7 +51,10 @@ export function AdminDashboard() {
   else if (pathname.includes('/cities')) activeTab = 'cities';
   else if (pathname.includes('/bookings')) activeTab = 'bookings';
 
+  const [vendorFilter, setVendorFilter] = useState<'ALL' | 'PENDING' | 'VERIFIED' | 'REJECTED'>('ALL');
+
   const vendors = Storage.getVendors();
+  const allUsers = Storage.getUsers();
   const bookings = Storage.getBookings();
   const categories = Storage.getCategories();
   const cities = Storage.getCities();
@@ -60,6 +65,14 @@ export function AdminDashboard() {
 
   const pendingVendors = vendors.filter((v) => v.verificationStatus === 'PENDING');
   const verifiedVendors = vendors.filter((v) => v.verificationStatus === 'VERIFIED');
+  const rejectedVendors = vendors.filter((v) => v.verificationStatus === 'REJECTED');
+
+  const filteredVendors = vendors.filter((v) => {
+    if (vendorFilter === 'PENDING') return v.verificationStatus === 'PENDING';
+    if (vendorFilter === 'VERIFIED') return v.verificationStatus === 'VERIFIED';
+    if (vendorFilter === 'REJECTED') return v.verificationStatus === 'REJECTED';
+    return true;
+  });
 
   const navTabs = [
     { id: 'overview', label: 'Platform KPIs', path: '/admin/dashboard/overview', icon: TrendingUp },
@@ -71,7 +84,51 @@ export function AdminDashboard() {
 
   const handleVerifyVendor = (vendorId: string) => {
     Storage.updateVendorVerification(vendorId, 'VERIFIED');
-    confetti({ particleCount: 70, spread: 60 });
+    const targetVendor = Storage.getVendorById(vendorId);
+    if (targetVendor) {
+      const sellerUser = allUsers.find(
+        (u) => u.id === targetVendor.userId || u.sellerProfileId === targetVendor.id
+      );
+
+      // Create platform notification
+      Storage.createNotification({
+        id: `notif-verified-${Date.now()}`,
+        userId: targetVendor.userId,
+        title: '🎉 Storefront Approved & Verified',
+        message: `Congratulations! Your seller storefront "${targetVendor.businessName}" has been approved by the HomeBiz Administrator as a Real Verified Seller.`,
+        type: 'SYSTEM_ANNOUNCEMENT',
+        link: '/seller/dashboard',
+        read: false,
+        createdAt: new Date().toISOString(),
+      });
+
+      // Send real email notification
+      if (sellerUser?.email) {
+        sendSellerVerificationApprovalEmail(
+          sellerUser.email,
+          sellerUser.name,
+          targetVendor.businessName
+        );
+      }
+    }
+    confetti({ particleCount: 80, spread: 70 });
+  };
+
+  const handleRejectVendor = (vendorId: string) => {
+    Storage.updateVendorVerification(vendorId, 'REJECTED');
+    const targetVendor = Storage.getVendorById(vendorId);
+    if (targetVendor) {
+      Storage.createNotification({
+        id: `notif-rejected-${Date.now()}`,
+        userId: targetVendor.userId,
+        title: '⚠️ Storefront Verification Update',
+        message: `Your storefront "${targetVendor.businessName}" requires additional details before approval. Please contact administrator support.`,
+        type: 'SYSTEM_ANNOUNCEMENT',
+        link: '/seller/dashboard/profile',
+        read: false,
+        createdAt: new Date().toISOString(),
+      });
+    }
   };
 
   const handleToggleFeatured = (vendorId: string) => {
@@ -180,7 +237,7 @@ export function AdminDashboard() {
 
               {/* Vendors Overview Table */}
               <div className="bg-white rounded-3xl p-6 border border-[#e3e2e1] shadow-xs space-y-4">
-                <h3 className="font-bold text-sm text-[#1a1c1c]">Verified Home Businesses - Pakistan & Australia</h3>
+                <h3 className="font-bold text-sm text-[#1a1c1c]">Registered Home Businesses - Pakistan & Australia</h3>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-left">
                     <thead className="bg-[#faf9f8] text-[#665d55] uppercase tracking-wider text-[10px]">
@@ -234,78 +291,186 @@ export function AdminDashboard() {
 
           {/* TAB 2: VENDOR VERIFICATIONS */}
           {activeTab === 'vendors' && (
-            <div className="space-y-4">
-              <h2 className="text-base font-bold text-[#1a1c1c]">
-                Merchant Verification Queue ({pendingVendors.length} Pending)
-              </h2>
+            <div className="space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-bold text-[#1a1c1c]">
+                    Seller Verification & Governance Panel
+                  </h2>
+                  <p className="text-xs text-[#665d55]">
+                    Verify genuine home creators across Pakistan and Australia before public activation.
+                  </p>
+                </div>
 
-              <div className="space-y-4">
-                {vendors.map((v) => (
-                  <div
-                    key={v.id}
-                    className="bg-white rounded-3xl p-5 border border-[#e3e2e1] shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
-                  >
-                    <div className="flex items-start gap-4">
-                      <img
-                        src={v.avatar}
-                        alt={v.businessName}
-                        className="w-14 h-14 rounded-2xl object-cover border border-[#e3e2e1] flex-shrink-0"
-                      />
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-bold text-sm text-[#1a1c1c]">{v.businessName}</h3>
-                          <span
-                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${v.verificationStatus === 'VERIFIED'
-                                ? 'bg-[#b0f0d6]/40 text-[#003527]'
-                                : 'bg-[#ffe088] text-[#735c00]'
-                              }`}
+                {/* Filter Pills */}
+                <div className="flex items-center gap-1.5 p-1 bg-[#faf9f8] rounded-2xl border border-[#e3e2e1] overflow-x-auto">
+                  {(['ALL', 'PENDING', 'VERIFIED', 'REJECTED'] as const).map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setVendorFilter(st)}
+                      className={`px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition-colors ${
+                        vendorFilter === st
+                          ? 'bg-[#003527] text-white shadow-xs'
+                          : 'text-[#665d55] hover:text-[#1a1c1c]'
+                      }`}
+                    >
+                      {st === 'ALL' && `All (${vendors.length})`}
+                      {st === 'PENDING' && `Pending (${pendingVendors.length})`}
+                      {st === 'VERIFIED' && `Verified (${verifiedVendors.length})`}
+                      {st === 'REJECTED' && `Rejected (${rejectedVendors.length})`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {filteredVendors.length === 0 ? (
+                <div className="bg-white rounded-3xl p-12 text-center border border-[#e3e2e1] space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-[#f4f3f2] mx-auto flex items-center justify-center text-xl">
+                    🏪
+                  </div>
+                  <h3 className="font-bold text-sm text-[#1a1c1c]">No Sellers Found in this Category</h3>
+                  <p className="text-xs text-[#665d55]">
+                    There are currently no sellers matching the selected verification filter.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {filteredVendors.map((v) => {
+                    const sellerUser = allUsers.find(
+                      (u) => u.id === v.userId || u.sellerProfileId === v.id
+                    );
+                    const isAus = isAustralianLocation(v.city);
+
+                    return (
+                      <div
+                        key={v.id}
+                        className="bg-white rounded-3xl p-5 border border-[#e3e2e1] shadow-xs flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5"
+                      >
+                        <div className="flex items-start gap-4">
+                          <img
+                            src={v.avatar || 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=200&q=80'}
+                            alt={v.businessName}
+                            className="w-16 h-16 rounded-2xl object-cover border border-[#e3e2e1] flex-shrink-0"
+                          />
+                          <div className="space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="font-bold text-sm sm:text-base text-[#1a1c1c]">
+                                {v.businessName}
+                              </h3>
+
+                              {v.verificationStatus === 'VERIFIED' && (
+                                <span className="text-[10px] bg-[#b0f0d6] text-[#003527] px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                  <CheckCircle className="w-3 h-3" />
+                                  <span>Real Seller Verified</span>
+                                </span>
+                              )}
+
+                              {v.verificationStatus === 'PENDING' && (
+                                <span className="text-[10px] bg-[#ffe088] text-[#735c00] px-2.5 py-0.5 rounded-full font-bold animate-pulse">
+                                  ⏳ Verification Pending
+                                </span>
+                              )}
+
+                              {v.verificationStatus === 'REJECTED' && (
+                                <span className="text-[10px] bg-red-100 text-red-700 px-2.5 py-0.5 rounded-full font-bold">
+                                  ❌ Rejected
+                                </span>
+                              )}
+
+                              {v.isFeatured && (
+                                <span className="text-[10px] bg-[#003527] text-white px-2 py-0.5 rounded-full font-bold">
+                                  Featured
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Seller Contact & Verification Attributes */}
+                            <div className="text-xs text-[#665d55] flex flex-wrap items-center gap-x-3 gap-y-1">
+                              <span className="font-medium text-[#1a1c1c]">
+                                👤 Owner: {sellerUser?.name || 'Seller'}
+                              </span>
+                              <span>•</span>
+                              <span>
+                                📧 <strong className="text-[#003527]">{sellerUser?.email || 'N/A'}</strong>
+                              </span>
+                              {sellerUser?.phone && (
+                                <>
+                                  <span>•</span>
+                                  <span>📞 {sellerUser.phone}</span>
+                                </>
+                              )}
+                            </div>
+
+                            <div className="text-xs text-[#665d55] flex flex-wrap items-center gap-x-3 gap-y-1">
+                              <span className="inline-flex items-center gap-1 font-semibold text-[#1a1c1c]">
+                                {isAus ? '🇦🇺 Australia' : '🇵🇰 Pakistan'} • {v.locality}, {v.city}
+                              </span>
+                              <span>•</span>
+                              <span className="capitalize">Category: {v.category}</span>
+                              <span>•</span>
+                              <span>Starting from: {isAus ? `A$ ${v.startingPrice}` : `Rs. ${v.startingPrice}`}</span>
+                            </div>
+
+                            <p className="text-xs text-[#404944] line-clamp-1 max-w-xl">
+                              {v.description}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Admin Action Buttons */}
+                        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 self-stretch lg:self-center justify-end">
+                          <Link
+                            href={`/vendors/${v.slug}`}
+                            className="px-3 py-1.5 rounded-full border border-stone-300 text-stone-700 hover:bg-stone-50 text-xs font-bold"
                           >
-                            {v.verificationStatus}
-                          </span>
-                          {v.isFeatured && (
-                            <span className="text-[10px] bg-[#003527] text-white px-2 py-0.5 rounded-full font-bold">
-                              Featured
-                            </span>
+                            View Store
+                          </Link>
+
+                          <button
+                            onClick={() => handleToggleFeatured(v.id)}
+                            className={`px-3 py-1.5 rounded-full border text-xs font-bold transition-colors ${
+                              v.isFeatured
+                                ? 'bg-[#ffe088] text-[#735c00] border-[#ffe088]'
+                                : 'bg-white text-stone-600 border-stone-300'
+                            }`}
+                          >
+                            {v.isFeatured ? '★ Featured' : 'Feature'}
+                          </button>
+
+                          {v.verificationStatus !== 'VERIFIED' ? (
+                            <>
+                              <button
+                                onClick={() => handleVerifyVendor(v.id)}
+                                className="px-4 py-1.5 rounded-full bg-[#003527] text-white text-xs font-bold hover:bg-[#064e3b] shadow-xs flex items-center gap-1"
+                              >
+                                <CheckCircle className="w-3.5 h-3.5 text-[#b0f0d6]" />
+                                <span>Verify Real Seller</span>
+                              </button>
+
+                              {v.verificationStatus !== 'REJECTED' && (
+                                <button
+                                  onClick={() => handleRejectVendor(v.id)}
+                                  className="px-3 py-1.5 rounded-full border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold"
+                                >
+                                  Reject
+                                </button>
+                              )}
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => Storage.updateVendorVerification(v.id, 'PENDING')}
+                              className="px-3 py-1.5 rounded-full border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold"
+                            >
+                              Revoke
+                            </button>
                           )}
                         </div>
-                        <p className="text-xs text-[#665d55]">
-                          📍 {v.locality}, {v.city} • Category: {v.category}
-                        </p>
-                        <p className="text-xs text-[#404944] mt-1 line-clamp-1">{v.description}</p>
                       </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleToggleFeatured(v.id)}
-                        className={`px-3 py-1.5 rounded-full border text-xs font-bold transition-colors ${v.isFeatured
-                            ? 'bg-[#ffe088] text-[#735c00] border-[#ffe088]'
-                            : 'bg-white text-stone-600 border-stone-300'
-                          }`}
-                      >
-                        {v.isFeatured ? '★ Featured' : 'Feature'}
-                      </button>
-
-                      {v.verificationStatus !== 'VERIFIED' ? (
-                        <button
-                          onClick={() => handleVerifyVendor(v.id)}
-                          className="px-4 py-1.5 rounded-full bg-[#003527] text-white text-xs font-bold hover:bg-[#064e3b] shadow-xs flex items-center gap-1"
-                        >
-                          <CheckCircle className="w-3.5 h-3.5 text-[#b0f0d6]" />
-                          <span>Approve & Verify</span>
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => Storage.updateVendorVerification(v.id, 'PENDING')}
-                          className="px-3 py-1.5 rounded-full border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold"
-                        >
-                          Revoke
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 

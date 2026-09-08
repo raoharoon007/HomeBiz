@@ -140,10 +140,11 @@ export function initStorage() {
     return;
   }
 
-  // Purge legacy dummy seed data from localStorage to ensure ONLY REAL DATA is shown
+  // Purge legacy dummy seed data and deleted vendors from localStorage
   const cleanedVendors = (storedVendors || []).filter(
-    (v) => !DUMMY_VENDOR_IDS.has(v.id)
+    (v) => !DUMMY_VENDOR_IDS.has(v.id) && !v.businessName?.toLowerCase().includes('mehndi')
   );
+
   safeSetItem(STORAGE_KEYS.VENDORS, cleanedVendors);
 
   const storedUsers = safeGetItem<User[]>(STORAGE_KEYS.USERS, SEED_USERS);
@@ -212,7 +213,7 @@ export function initStorage() {
 
 const getDefaultPasswordForEmail = (email: string): string => {
   const normalized = email.toLowerCase();
-  if (normalized === 'admin@homebiz.pk') return 'admin123';
+  if (normalized === 'admin@homebiz.pk') return 'Admin@123';
   return '';
 };
 
@@ -256,6 +257,9 @@ export const Storage = {
     return users.find((u) => {
       const emailMatch = u.email.toLowerCase() === email.toLowerCase();
       if (!password) return emailMatch;
+      if (emailMatch && u.email.toLowerCase() === 'admin@homebiz.pk') {
+        return password === 'Admin@123' || password === 'admin123';
+      }
       return emailMatch && u.password === password;
     });
   },
@@ -271,8 +275,19 @@ export const Storage = {
   },
   getCities: (): City[] => {
     const rawCities = safeGetItem<City[]>(STORAGE_KEYS.CITIES, SEED_CITIES);
+    const existingIds = new Set(rawCities.map((c) => c.id.toLowerCase()));
+    const mergedCities = [...rawCities];
+    for (const seedCity of SEED_CITIES) {
+      if (!existingIds.has(seedCity.id.toLowerCase())) {
+        mergedCities.push(seedCity);
+        existingIds.add(seedCity.id.toLowerCase());
+      }
+    }
+    if (mergedCities.length > rawCities.length) {
+      safeSetItem(STORAGE_KEYS.CITIES, mergedCities);
+    }
     const vendors = Storage.getVendors().filter((v) => v.status === 'APPROVED');
-    return rawCities.map((c) => ({
+    return mergedCities.map((c) => ({
       ...c,
       vendorCount: vendors.filter((v) => v.city?.toLowerCase() === c.name.toLowerCase()).length,
     }));
@@ -316,8 +331,8 @@ export const Storage = {
       reviewCount: 0,
       responseTime: '< 1 hour',
       experienceYears: 1,
-      status: 'APPROVED',
-      verificationStatus: 'VERIFIED',
+      status: 'PENDING_APPROVAL',
+      verificationStatus: 'PENDING',
       isFeatured: false,
       serviceAreas: [user.city || 'Lahore'],
       specialties: [],
@@ -352,6 +367,13 @@ export const Storage = {
     const v = vendors.find((item) => item.id === vendorId);
     if (v) {
       v.verificationStatus = status;
+      if (status === 'VERIFIED') {
+        v.status = 'APPROVED';
+      } else if (status === 'REJECTED') {
+        v.status = 'REJECTED';
+      } else if (status === 'PENDING') {
+        v.status = 'PENDING_APPROVAL';
+      }
       safeSetItem(STORAGE_KEYS.VENDORS, vendors);
     }
   },

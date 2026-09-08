@@ -268,8 +268,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         reviewCount: 1,
         responseTime: '< 30 mins',
         experienceYears: 2,
-        status: 'APPROVED' as const,
-        verificationStatus: 'VERIFIED' as const,
+        status: 'PENDING_APPROVAL' as const,
+        verificationStatus: 'PENDING' as const,
         isFeatured: false,
         serviceAreas: [city],
         specialties: ['Custom Made', 'Pure Ingredients', 'Doorstep Delivery'],
@@ -293,6 +293,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       Storage.saveVendor({ id: vendorId, ...vendorData });
 
+      // Notify Platform Admin about new seller awaiting verification
+      Storage.createNotification({
+        id: `notif-admin-verify-${Date.now()}`,
+        userId: 'user-admin',
+        title: '🛡️ New Seller Verification Required',
+        message: `Seller "${businessName}" (${city}) registered and is awaiting administrator verification.`,
+        type: 'SYSTEM_ANNOUNCEMENT',
+        link: '/admin/dashboard/vendors',
+        read: false,
+        createdAt: new Date().toISOString(),
+      });
+
       // If Supabase is connected and we have a real UUID, write to Supabase vendors table
       if (isSupabaseConfigured && !newUser.id.startsWith('user-')) {
         try {
@@ -311,8 +323,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             gallery: vendorData.gallery,
             starting_price: vendorData.startingPrice,
             rating: 5.0,
-            status: 'APPROVED',
-            verification_status: 'VERIFIED',
+            status: 'PENDING_APPROVAL',
+            verification_status: 'PENDING',
             service_areas: vendorData.serviceAreas,
             specialties: vendorData.specialties,
           }, { onConflict: 'user_id' });

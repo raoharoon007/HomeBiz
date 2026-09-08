@@ -89,7 +89,7 @@ export function BecomeSellerPage() {
       startingPrice,
       rating: 5.0,
       reviewCount: 0,
-      status: 'APPROVED',
+      status: 'PENDING_APPROVAL',
       isFeatured: false,
       verificationStatus: 'PENDING',
       coverImage: '',

@@ -37,6 +37,24 @@ export const loginSchema = yup.object().shape({
     .min(6, 'Password must be at least 6 characters long'),
 });
 
+// Strong Password Rule: Min 8 chars, 1 uppercase, 1 lowercase, 1 special character
+export const strongPasswordRule = yup
+  .string()
+  .required('Password is required')
+  .min(8, 'Password must be at least 8 characters long')
+  .matches(/[A-Z]/, 'Password must include at least one capital letter (A-Z)')
+  .matches(/[a-z]/, 'Password must include at least one small letter (a-z)')
+  .matches(/[^A-Za-z0-9]/, 'Password must include at least one special character (e.g. !@#$%^&*)');
+
+// OTP Verification Schema
+export const otpSchema = yup.object().shape({
+  otp: yup
+    .string()
+    .trim()
+    .required('4-digit verification code is required')
+    .matches(/^\d{4}$/, 'Verification code must be exactly 4 numeric digits'),
+});
+
 // 2. Auth: Register
 export const registerSchema = yup.object().shape({
   name: yup
@@ -55,10 +73,7 @@ export const registerSchema = yup.object().shape({
     .trim()
     .required('WhatsApp / Phone number is required')
     .min(10, 'Phone number must be at least 10 digits'),
-  password: yup
-    .string()
-    .required('Password is required')
-    .min(6, 'Password must be at least 6 characters'),
+  password: strongPasswordRule,
   confirmPassword: yup
     .string()
     .required('Please confirm your password')

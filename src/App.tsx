@@ -63,9 +63,25 @@ function AppContent() {
     syncInitialData();
   }, []);
 
-  // Scroll to top on route change
+  // Scroll to top and update document title on route change
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    const getPageTitle = () => {
+      if (pathname === '/') return "HomeBiz | Pakistan & Australia's #1 Home Business Marketplace";
+      if (pathname.startsWith('/auth/register')) return 'Register | HomeBiz Pakistan & Australia';
+      if (pathname.startsWith('/auth/login')) return 'Sign In | HomeBiz Pakistan & Australia';
+      if (pathname.startsWith('/admin/dashboard')) return 'Admin Verification Panel | HomeBiz Pakistan & Australia';
+      if (pathname.startsWith('/seller/dashboard')) return 'Seller Storefront Hub | HomeBiz Pakistan & Australia';
+      if (pathname.startsWith('/customer/dashboard')) return 'Customer Account | HomeBiz Pakistan & Australia';
+      if (pathname.startsWith('/explore')) return 'Explore Home Businesses | HomeBiz Pakistan & Australia';
+      if (pathname.startsWith('/categories')) return 'Browse Categories | HomeBiz Pakistan & Australia';
+      if (pathname.startsWith('/become-a-seller')) return 'Become a Verified Seller | HomeBiz Pakistan & Australia';
+      if (pathname.startsWith('/pricing')) return 'Seller Plans & Pricing | HomeBiz Pakistan & Australia';
+      return 'HomeBiz | Pakistan & Australia';
+    };
+
+    document.title = getPageTitle();
   }, [pathname]);
 
   useEffect(() => {

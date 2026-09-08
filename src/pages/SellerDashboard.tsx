@@ -316,6 +316,38 @@ export function SellerDashboard() {
         </div>
       </div>
 
+      {/* Verification Status Banner if Pending */}
+      {vendor.verificationStatus !== 'VERIFIED' && (
+        <div className="bg-amber-50 border border-amber-200 rounded-3xl p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-2xl bg-[#ffe088] text-[#735c00] flex items-center justify-center font-bold text-lg shrink-0">
+              ⏳
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <h2 className="font-bold text-sm text-[#1a1c1c]">
+                  Storefront Verification Under Review by Admin
+                </h2>
+                <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full font-bold">
+                  Pending Admin Approval
+                </span>
+              </div>
+              <p className="text-xs text-[#665d55]">
+                Welcome to HomeBiz Pakistan & Australia! The platform administrator is reviewing your business details to verify your seller legitimacy. You can continue configuring your services and packages below.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Link
+              href="/admin/dashboard/vendors"
+              className="text-xs text-[#003527] font-bold underline hover:text-[#064e3b] bg-white px-3 py-1.5 rounded-xl border border-amber-200 shadow-xs"
+            >
+              Admin Review Queue →
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Main Grid: Tabs + Content */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Navigation */}

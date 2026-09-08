@@ -88,8 +88,8 @@ CREATE TABLE IF NOT EXISTS public.vendors (
   review_count INT DEFAULT 0,
   response_time TEXT DEFAULT '< 30 mins',
   experience_years INT DEFAULT 1,
-  status TEXT DEFAULT 'APPROVED' CHECK (status IN ('PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'SUSPENDED')),
-  verification_status TEXT DEFAULT 'VERIFIED' CHECK (verification_status IN ('UNVERIFIED', 'PENDING', 'VERIFIED', 'REJECTED')),
+  status TEXT DEFAULT 'PENDING_APPROVAL' CHECK (status IN ('PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'SUSPENDED')),
+  verification_status TEXT DEFAULT 'PENDING' CHECK (verification_status IN ('UNVERIFIED', 'PENDING', 'VERIFIED', 'REJECTED')),
   is_featured BOOLEAN DEFAULT false,
   service_areas JSONB DEFAULT '[]'::jsonb,
   specialties JSONB DEFAULT '[]'::jsonb,
@@ -381,7 +381,13 @@ INSERT INTO public.cities (name, province, popular_areas, vendor_count, featured
 ('Islamabad', 'Federal', '["F-6", "F-7", "F-8", "F-10", "F-11", "E-7", "Bahria Town", "DHA-2"]'::jsonb, 6, true),
 ('Rawalpindi', 'Punjab', '["Saddar", "Bahria Town", "Satellite Town", "Westridge", "Chaklala"]'::jsonb, 3, false),
 ('Faisalabad', 'Punjab', '["D-Ground", "Madina Town", "Peoples Colony", "Kohinoor City"]'::jsonb, 2, false),
-('Peshawar', 'KPK', '["Hayatabad", "University Town", "Cantt"]'::jsonb, 2, false)
+('Peshawar', 'KPK', '["Hayatabad", "University Town", "Cantt"]'::jsonb, 2, false),
+('Sydney', 'New South Wales', '["Surry Hills", "Parramatta", "Bondi", "Chatswood", "Liverpool"]'::jsonb, 5, true),
+('Melbourne', 'Victoria', '["Richmond", "St Kilda", "Footscray", "Carlton", "Sunbury"]'::jsonb, 4, true),
+('Brisbane', 'Queensland', '["West End", "New Farm", "Chermside", "Kelvin Grove"]'::jsonb, 2, true),
+('Perth', 'Western Australia', '["Subiaco", "Fremantle", "Canning Vale", "Joondalup"]'::jsonb, 2, true),
+('Adelaide', 'South Australia', '["Glenelg", "Norwood", "Prospect", "Mile End"]'::jsonb, 1, false),
+('Canberra', 'Australian Capital Territory', '["Civic", "Acton", "Kingston", "Belconnen"]'::jsonb, 1, false)
 ON CONFLICT (name) DO NOTHING;
 
 -- Seed Categories
@@ -400,3 +406,50 @@ INSERT INTO public.pricing_plans (slug, name, description, price_monthly, price_
 ('pro', 'Pro Partner', 'Ideal for busy home chefs and artisans looking to scale orders.', 2999, 29990, '["Priority Search Ranking", "Unlimited Services & Gallery", "Custom Quotation Bidding", "Real-time Chat with Buyers", "Verified Partner Badge", "Advanced Analytics & Insights"]'::jsonb, 'Sparkles', 'Upgrade to Pro', true, 'Most Popular', true),
 ('featured', 'Featured Partner', 'Maximum visibility across homepage, category banners & priority leads.', 5999, 59990, '["Homepage Hero Showcase", "Top 3 Search Guarantee", "Dedicated Support Manager", "Social Media Spotlight Promo", "Zero Platform Commission", "0% Lead Service Fees"]'::jsonb, 'Crown', 'Become Featured', false, 'Best Value', true)
 ON CONFLICT (slug) DO NOTHING;
+
+-- 11. OTP VERIFICATIONS TABLE (For storing 4-digit OTP audit logs)
+CREATE TABLE IF NOT EXISTS public.otp_verifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT NOT NULL,
+  otp_code TEXT NOT NULL,
+  verified BOOLEAN DEFAULT false,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- RLS Policies for OTP verifications
+ALTER TABLE public.otp_verifications ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow anon insert to otp_verifications" ON public.otp_verifications;
+CREATE POLICY "Allow anon insert to otp_verifications" ON public.otp_verifications FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon select on otp_verifications" ON public.otp_verifications;
+CREATE POLICY "Allow anon select on otp_verifications" ON public.otp_verifications FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow anon update on otp_verifications" ON public.otp_verifications;
+CREATE POLICY "Allow anon update on otp_verifications" ON public.otp_verifications FOR UPDATE USING (true);
+
+-- 12. PLATFORM SUPER ADMINISTRATOR SETUP
+-- Note: Create admin in Supabase Dashboard -> Authentication -> Users with:
+-- Email: admin@homebiz.pk
+-- Password: Admin@123
+-- Then execute below to guarantee ADMIN privileges in public.profiles:
+-- UPDATE public.profiles SET role = 'ADMIN' WHERE email = 'admin@homebiz.pk';
+
+-- 13. SECURE PASSWORD RESET FUNCTION (RPC)
+-- Allows updating encrypted password in auth.users after email OTP verification
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+CREATE OR REPLACE FUNCTION public.reset_user_password(user_email TEXT, new_password TEXT)
+RETURNS BOOLEAN AS $$
+BEGIN
+  -- Update auth.users encrypted password with bcrypt
+  UPDATE auth.users
+  SET encrypted_password = crypt(new_password, gen_salt('bf')),
+      updated_at = now()
+  WHERE lower(email) = lower(user_email);
+
+  RETURN FOUND;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
