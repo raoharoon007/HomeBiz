@@ -27,6 +27,7 @@ import { SellerDashboard } from './pages/SellerDashboard';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { PricingPage } from './pages/PricingPage';
 import { SupabaseDb } from './lib/supabaseDb';
+import { Storage } from './lib/storage';
 
 function AppContent() {
   const pathname = usePathname();
@@ -36,11 +37,12 @@ function AppContent() {
   useEffect(() => {
     async function syncInitialData() {
       try {
-        const [categories, cities, pricingPlans, vendors] = await Promise.all([
+        const [categories, cities, pricingPlans, vendors, liveBookings] = await Promise.all([
           SupabaseDb.getCategories(),
           SupabaseDb.getCities(),
           SupabaseDb.getPricingPlans(),
           SupabaseDb.getVendors(),
+          SupabaseDb.getBookings(),
         ]);
 
         if (categories.length > 0) {
@@ -53,7 +55,18 @@ function AppContent() {
           window.localStorage.setItem('hb_pricing_plans_v1', JSON.stringify(pricingPlans));
         }
         if (vendors.length > 0) {
-          window.localStorage.setItem('hb_vendors_v1', JSON.stringify(vendors));
+          const currentLocal = Storage.getVendors();
+          const mergedMap = new Map<string, any>();
+          currentLocal.forEach((v) => mergedMap.set(v.slug || v.id, v));
+          vendors.forEach((v) => mergedMap.set(v.slug || v.id, v));
+          window.localStorage.setItem('hb_vendors_v1', JSON.stringify(Array.from(mergedMap.values())));
+        }
+        if (liveBookings && liveBookings.length > 0) {
+          const currentBookings = Storage.getBookings();
+          const bMap = new Map<string, any>();
+          currentBookings.forEach((b) => bMap.set(b.bookingNumber, b));
+          liveBookings.forEach((b) => bMap.set(b.bookingNumber, b));
+          window.localStorage.setItem('hb_bookings_v1', JSON.stringify(Array.from(bMap.values())));
         }
         window.dispatchEvent(new CustomEvent('hb_storage_update', { detail: { key: 'all' } }));
       } catch (e) {

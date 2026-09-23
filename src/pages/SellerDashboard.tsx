@@ -595,7 +595,21 @@ export function SellerDashboard() {
 
                     <div className="flex items-center justify-between pt-2 border-t border-[#f4f3f2] text-xs text-[#665d55]">
                       <span>Notice: {srv.noticePeriod}</span>
-                      <span className="text-[#003527] font-semibold">{srv.addons?.length || 0} Add-ons</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[#003527] font-semibold">{srv.addons?.length || 0} Add-ons</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Delete package "${srv.title}"?`)) {
+                              Storage.deleteVendorService(vendor.id, srv.id);
+                            }
+                          }}
+                          className="p-1 hover:bg-red-50 text-red-500 rounded-md transition-colors cursor-pointer"
+                          title="Delete Package"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}

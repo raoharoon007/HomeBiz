@@ -151,8 +151,8 @@ export function BookingPage() {
       platformFee,
       discount: 0,
       total: grandTotal,
-      status: 'CONFIRMED',
-      paymentStatus: (finalPaymentMethod === 'PAYPAL' || finalPaymentMethod === 'CARD') ? 'PAID' : 'PENDING',
+      status: finalPaymentMethod === 'CASH_ON_DELIVERY' ? 'CONFIRMED' : 'PENDING',
+      paymentStatus: finalPaymentMethod === 'CASH_ON_DELIVERY' ? 'CASH_ON_DELIVERY' : 'PENDING',
       paymentMethod: finalPaymentMethod,
       transactionId: txnId,
       createdAt: new Date().toISOString(),
@@ -814,7 +814,15 @@ export function BookingPage() {
             <div className="flex justify-between">
               <span className="text-[#665d55]">Payment Method:</span>
               <span className="font-semibold text-stone-800">
-                {createdBooking.paymentMethod === 'PAYPAL' ? '🅿️ PayPal (Live Automatic)' : createdBooking.paymentMethod}
+                {createdBooking.paymentMethod === 'PAYPAL'
+                  ? '🅿️ PayPal (Escrow Transfer)'
+                  : createdBooking.paymentMethod === 'CASH_ON_DELIVERY'
+                  ? '💵 Cash on Delivery (COD)'
+                  : createdBooking.paymentMethod === 'JAZZCASH_EASYPAISA'
+                  ? '📱 JazzCash / Easypaisa'
+                  : createdBooking.paymentMethod === 'BANK_TRANSFER'
+                  ? '🏛️ Askari Bank Transfer'
+                  : createdBooking.paymentMethod}
               </span>
             </div>
             <div className="flex justify-between items-center">
@@ -822,9 +830,15 @@ export function BookingPage() {
               <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
                 createdBooking.paymentStatus === 'PAID'
                   ? 'bg-emerald-100 text-emerald-800'
+                  : createdBooking.paymentStatus === 'CASH_ON_DELIVERY'
+                  ? 'bg-blue-100 text-blue-800'
                   : 'bg-amber-100 text-amber-800'
               }`}>
-                {createdBooking.paymentStatus === 'PAID' ? '✓ Paid (Live Verified)' : '⏳ Verification Pending'}
+                {createdBooking.paymentStatus === 'PAID'
+                  ? '✓ Paid & Verified'
+                  : createdBooking.paymentStatus === 'CASH_ON_DELIVERY'
+                  ? '💵 Cash on Delivery'
+                  : '⏳ Escrow Verification Pending'}
               </span>
             </div>
             {createdBooking.transactionId && (

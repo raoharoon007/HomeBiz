@@ -45,8 +45,9 @@ export function PaymentGateway({
     const [step, setStep] = useState<'method' | 'details' | 'confirmation'>('method');
     const [copiedField, setCopiedField] = useState<string | null>(null);
 
-    // PayPal Automated Live Gateway State
+    // PayPal State
     const [paypalPayerEmail, setPaypalPayerEmail] = useState('');
+    const [paypalTxnId, setPaypalTxnId] = useState('');
     const [isVerifyingPayPal, setIsVerifyingPayPal] = useState(false);
     const [paypalStage, setPaypalStage] = useState<number>(0);
     const [paypalCaptureDetails, setPaypalCaptureDetails] = useState<{
@@ -138,6 +139,10 @@ export function PaymentGateway({
         setValidationError(null);
 
         if (paymentMethod === 'paypal') {
+            if (!paypalTxnId.trim() || paypalTxnId.trim().length < 4) {
+                setValidationError('Please enter your PayPal Transaction ID or reference number.');
+                return false;
+            }
             if (paypalPayerEmail && !validateEmail(paypalPayerEmail)) {
                 setValidationError('Please enter a valid PayPal email address.');
                 return false;
@@ -335,11 +340,6 @@ export function PaymentGateway({
     }, [paymentMethod, step, customClientId, activeCurrency, amount, planName]);
 
     const handlePaymentSubmit = () => {
-        if (paymentMethod === 'paypal') {
-            triggerLivePayPalHandshake();
-            return;
-        }
-
         if (!validateDetails()) return;
 
         setLoading(true);
@@ -347,17 +347,19 @@ export function PaymentGateway({
         const generatedTxnId = `TXN-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
         const providerRef =
-            paymentMethod === 'jazz_cash'
-                ? jazzPin
+            paymentMethod === 'paypal'
+                ? `PayPal TID: ${paypalTxnId.trim()}${paypalPayerEmail ? ` (${paypalPayerEmail.trim()})` : ''}`
+                : paymentMethod === 'jazz_cash'
+                ? `JazzCash TID: ${jazzPin.trim()} (${jazzNumber.trim()})`
                 : paymentMethod === 'easypaisa'
-                ? easypaisaPin
+                ? `Easypaisa TRX: ${easypaisaPin.trim()} (${easypaisaNumber.trim()})`
                 : paymentMethod === 'bank_transfer'
                 ? `${senderBank.trim()} Ref: ${bankTxnRef.trim()}`
-                : `AUTH-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+                : `Card: ${cardName.trim()} (Ending ${cardNumber.replace(/\s/g, '').slice(-4)})`;
 
         const result: PaymentResult = {
             paymentMethod: paymentMethod ? mapPaymentMethod(paymentMethod) : 'CARD',
-            transactionId: generatedTxnId,
+            transactionId: paymentMethod === 'paypal' ? `PP-${paypalTxnId.trim()}` : generatedTxnId,
             providerReference: providerRef,
             amount,
             currency: activeCurrency,
@@ -365,7 +367,6 @@ export function PaymentGateway({
             paidAt: new Date().toISOString(),
         };
 
-        // Simulate processing delay
         setTimeout(() => {
             setLoading(false);
             setStep('confirmation');
@@ -373,10 +374,21 @@ export function PaymentGateway({
             setTimeout(() => {
                 onSuccess(result);
             }, 1800);
-        }, 1400);
+        }, 800);
     };
 
     if (step === 'confirmation') {
+        const displayRef =
+            paymentMethod === 'paypal'
+                ? paypalTxnId
+                : paymentMethod === 'jazz_cash'
+                ? jazzPin
+                : paymentMethod === 'easypaisa'
+                ? easypaisaPin
+                : paymentMethod === 'bank_transfer'
+                ? bankTxnRef
+                : 'SUBMITTED';
+
         return (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
                 <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl text-center space-y-6">
@@ -384,41 +396,34 @@ export function PaymentGateway({
                         ✓
                     </div>
                     <div>
-                        <h2 className="text-2xl font-black text-[#1a1c1c] font-['Plus_Jakarta_Sans']">Payment Confirmed!</h2>
+                        <h2 className="text-2xl font-black text-[#1a1c1c] font-['Plus_Jakarta_Sans']">Payment Details Submitted!</h2>
                         <p className="text-xs text-[#665d55] mt-2">
-                            Transaction received for <strong>{planName}</strong>.
+                            Transaction reference recorded for <strong>{planName}</strong>.
                         </p>
                     </div>
 
-                    {paymentMethod === 'paypal' && (
-                        <div className="space-y-2">
-                            <div className="flex items-center justify-center gap-2 py-1 px-3 bg-[#003087]/10 text-[#003087] rounded-full text-xs font-bold w-fit mx-auto">
-                                <span>⚡ Verified via PayPal Live Gateway</span>
-                            </div>
-                            <div className="bg-[#0070ba]/5 rounded-xl p-3 border border-[#0070ba]/20 text-xs text-left space-y-1.5 font-mono">
-                                <div className="flex justify-between">
-                                    <span className="text-[#665d55]">Merchant:</span>
-                                    <span className="font-bold text-[#003087]">{PLATFORM_PAYMENT_CONFIG.paypal.accountName} ({PLATFORM_PAYMENT_CONFIG.paypal.email})</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-[#665d55]">Capture Ref:</span>
-                                    <span className="font-bold text-emerald-700">{paypalCaptureDetails?.captureId || 'PP-LIVE-CAPTURED'}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-[#665d55]">Capture Status:</span>
-                                    <span className="font-bold text-emerald-600">COMPLETED & ESCROW SECURED</span>
-                                </div>
-                            </div>
+                    <div className="bg-[#faf9f8] rounded-xl p-3.5 border border-[#e3e2e1] text-xs text-left space-y-2 font-mono">
+                        <div className="flex justify-between">
+                            <span className="text-[#665d55]">Channel:</span>
+                            <span className="font-bold text-[#003527] uppercase">{paymentMethod?.replace('_', ' ')}</span>
                         </div>
-                    )}
+                        <div className="flex justify-between">
+                            <span className="text-[#665d55]">Reference / TID:</span>
+                            <span className="font-bold text-emerald-700">{displayRef}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-[#665d55]">Verification:</span>
+                            <span className="font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded text-[11px]">PENDING ESCROW VERIFICATION</span>
+                        </div>
+                    </div>
 
                     <div className="bg-[#b0f0d6]/20 rounded-2xl p-4 border border-[#95d3ba]/40">
-                        <p className="text-[10px] font-bold text-[#003527] uppercase tracking-wider">Amount Processed</p>
+                        <p className="text-[10px] font-bold text-[#003527] uppercase tracking-wider">Payable Amount</p>
                         <p className="text-2xl font-black text-[#003527] mt-1">
                             {formatCurrency(amount, activeCurrency)}
                         </p>
                     </div>
-                    <p className="text-xs text-[#665d55]">Activating your order / subscription benefits and redirecting...</p>
+                    <p className="text-xs text-[#665d55]">Your order is recorded. Redirecting to confirmation...</p>
                 </div>
             </div>
         );
@@ -652,16 +657,15 @@ export function PaymentGateway({
                             ← Back to Payment Channels
                         </button>
 
-                        {/* --- PAYPAL DETAILS SCREEN: AUTOMATED LIVE VERIFICATION GATEWAY --- */}
+                        {/* --- PAYPAL DETAILS SCREEN: DIRECT ESCROW TRANSFER --- */}
                         {paymentMethod === 'paypal' && (
                             <div className="space-y-4">
                                 <div className="bg-[#0070ba]/10 p-5 rounded-2xl border border-[#0070ba]/30 space-y-3">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2">
                                             <span className="text-2xl font-black text-[#003087]">PayPal</span>
-                                            <span className="text-[11px] font-bold text-[#0070ba] bg-white px-2 py-0.5 rounded-full border border-blue-200 flex items-center gap-1.5">
-                                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                                                Live Automatic Gateway
+                                            <span className="text-[11px] font-bold text-[#0070ba] bg-white px-2 py-0.5 rounded-full border border-blue-200">
+                                                Direct Escrow Transfer
                                             </span>
                                         </div>
                                         <span className="text-[10px] font-black text-blue-900 bg-blue-100 px-2 py-0.5 rounded-full">
@@ -672,11 +676,11 @@ export function PaymentGateway({
                                     {/* PayPal Verified Account Card */}
                                     <div className="bg-white p-3.5 rounded-xl border border-blue-200/80 space-y-2 text-xs">
                                         <div className="flex justify-between">
-                                            <span className="text-[#665d55]">Verified Recipient:</span>
+                                            <span className="text-[#665d55]">Account Holder:</span>
                                             <strong className="text-[#1a1c1c] font-semibold">{PLATFORM_PAYMENT_CONFIG.paypal.accountName}</strong>
                                         </div>
                                         <div className="flex justify-between items-center">
-                                            <span className="text-[#665d55]">Official PayPal Email:</span>
+                                            <span className="text-[#665d55]">PayPal Email:</span>
                                             <div className="flex items-center gap-1.5">
                                                 <strong className="text-[#003087] font-mono text-sm">{PLATFORM_PAYMENT_CONFIG.paypal.email}</strong>
                                                 <button
@@ -697,99 +701,59 @@ export function PaymentGateway({
                                         </div>
                                     </div>
 
-                                    <div className="flex items-center gap-2 p-2.5 bg-emerald-50 rounded-xl text-[11px] text-[#003527] border border-emerald-200/60">
-                                        <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                                        <span><strong>Automated Real-Time Capture:</strong> Payment is verified directly via PayPal API before order confirmation. Fake or unconfirmed transactions cannot be submitted.</span>
+                                    <div className="p-3 bg-white/90 rounded-xl border border-blue-100 text-xs text-[#404944] space-y-1">
+                                        <p className="font-bold text-[#003087]">Transfer Instructions:</p>
+                                        <p>1. Open your PayPal App or website.</p>
+                                        <p>2. Send <strong>{formatCurrency(amount, activeCurrency)}</strong> to <strong>{PLATFORM_PAYMENT_CONFIG.paypal.email}</strong>.</p>
+                                        <p>3. Enter your PayPal Transaction ID / Sending Email below and click Submit.</p>
                                     </div>
                                 </div>
 
-                                {/* Live Verification Progress Indicator */}
-                                {isVerifyingPayPal && (
-                                    <div className="bg-white p-4 rounded-2xl border-2 border-[#0070ba] shadow-lg space-y-3 animate-fade-in">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                                <RefreshCw className="w-4 h-4 text-[#0070ba] animate-spin" />
-                                                <span className="text-xs font-black text-[#003087]">
-                                                    PayPal Live Verification in Progress...
-                                                </span>
-                                            </div>
-                                            <span className="text-[11px] font-mono text-blue-600 font-bold">
-                                                {paypalStage === 1 && 'Step 1/5'}
-                                                {paypalStage === 2 && 'Step 2/5'}
-                                                {paypalStage === 3 && 'Step 3/5'}
-                                                {paypalStage === 4 && 'Step 4/5'}
-                                                {paypalStage === 5 && 'Verified ✓'}
-                                            </span>
-                                        </div>
-
-                                        <div className="w-full bg-blue-100 rounded-full h-2 overflow-hidden">
-                                            <div
-                                                className="bg-[#0070ba] h-full transition-all duration-500 rounded-full"
-                                                style={{ width: `${(paypalStage / 5) * 100}%` }}
-                                            />
-                                        </div>
-
-                                        <div className="text-[11px] text-[#1a1c1c] space-y-1 font-mono bg-blue-50/50 p-2.5 rounded-xl border border-blue-100">
-                                            <div className={paypalStage >= 1 ? 'text-emerald-700 font-bold flex items-center gap-1' : 'text-stone-400 flex items-center gap-1'}>
-                                                <span>{paypalStage >= 1 ? '✓' : '○'}</span>
-                                                <span>1. Handshake with PayPal Live API (api-m.paypal.com)</span>
-                                            </div>
-                                            <div className={paypalStage >= 2 ? 'text-emerald-700 font-bold flex items-center gap-1' : 'text-stone-400 flex items-center gap-1'}>
-                                                <span>{paypalStage >= 2 ? '✓' : '○'}</span>
-                                                <span>2. Authenticating Merchant: {PLATFORM_PAYMENT_CONFIG.paypal.email}</span>
-                                            </div>
-                                            <div className={paypalStage >= 3 ? 'text-emerald-700 font-bold flex items-center gap-1' : 'text-stone-400 flex items-center gap-1'}>
-                                                <span>{paypalStage >= 3 ? '✓' : '○'}</span>
-                                                <span>3. Authorizing {formatCurrency(amount, activeCurrency)} via SafePay Escrow</span>
-                                            </div>
-                                            <div className={paypalStage >= 4 ? 'text-emerald-700 font-bold flex items-center gap-1' : 'text-stone-400 flex items-center gap-1'}>
-                                                <span>{paypalStage >= 4 ? '✓' : '○'}</span>
-                                                <span>4. Capturing funds & locking verified token</span>
-                                            </div>
-                                            <div className={paypalStage >= 5 ? 'text-emerald-700 font-bold flex items-center gap-1' : 'text-stone-400 flex items-center gap-1'}>
-                                                <span>{paypalStage >= 5 ? '✓' : '○'}</span>
-                                                <span>5. Live Verification Confirmed (Status: COMPLETED)</span>
-                                            </div>
-                                        </div>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="block text-xs font-bold text-[#1a1c1c] uppercase tracking-wider mb-1.5">
+                                            PayPal Transaction ID / Receipt Number <span className="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={paypalTxnId}
+                                            onChange={(e) => setPaypalTxnId(e.target.value)}
+                                            placeholder="e.g. 9XX1234567890ABCD"
+                                            className="w-full px-4 py-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl text-xs focus:border-[#0070ba] outline-none font-mono"
+                                        />
                                     </div>
-                                )}
 
-                                {!isVerifyingPayPal && (
-                                    <div className="space-y-3">
-                                        <div>
-                                            <label className="block text-xs font-bold text-[#1a1c1c] uppercase tracking-wider mb-1.5">
-                                                Your PayPal Email Address (Optional for Receipt)
-                                            </label>
-                                            <input
-                                                type="email"
-                                                value={paypalPayerEmail}
-                                                onChange={(e) => setPaypalPayerEmail(e.target.value)}
-                                                placeholder="e.g. buyer@gmail.com (or leave blank for instant guest checkout)"
-                                                className="w-full px-4 py-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl text-xs focus:border-[#0070ba] outline-none"
-                                            />
-                                        </div>
-
-                                        {/* Smart Buttons mount container */}
-                                        <div id="paypal-smart-button-container" className="empty:hidden min-h-0" />
-
-                                        {/* Automated One-Click Live Verification Button */}
-                                        <button
-                                            type="button"
-                                            onClick={triggerLivePayPalHandshake}
-                                            disabled={loading || isVerifyingPayPal}
-                                            className="w-full py-3.5 px-6 rounded-full bg-[#ffc439] hover:bg-[#f6bb30] text-[#003087] font-black text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all transform hover:scale-[1.01] cursor-pointer"
-                                        >
-                                            <span className="font-serif italic text-xl font-black text-[#003087]">PayPal</span>
-                                            <span>⚡ Verify & Pay {formatCurrency(amount, activeCurrency)}</span>
-                                        </button>
-
-                                        {/* Escrow Guarantee & Trust Note */}
-                                        <div className="pt-2 flex items-center justify-center gap-1.5 text-[11px] text-[#665d55]">
-                                            <ShieldCheck className="w-3.5 h-3.5 text-[#0070ba]" />
-                                            <span>Instant automated verification & escrow lock via PayPal network</span>
-                                        </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-[#1a1c1c] uppercase tracking-wider mb-1.5">
+                                            Your PayPal Email Address (Optional)
+                                        </label>
+                                        <input
+                                            type="email"
+                                            value={paypalPayerEmail}
+                                            onChange={(e) => setPaypalPayerEmail(e.target.value)}
+                                            placeholder="e.g. buyer@gmail.com"
+                                            className="w-full px-4 py-3 bg-[#faf9f8] border border-[#e3e2e1] rounded-2xl text-xs focus:border-[#0070ba] outline-none"
+                                        />
                                     </div>
-                                )}
+
+                                    {validationError && (
+                                        <p className="text-xs text-red-600 font-semibold">{validationError}</p>
+                                    )}
+
+                                    <button
+                                        type="button"
+                                        onClick={handlePaymentSubmit}
+                                        disabled={loading}
+                                        className="w-full py-3.5 px-6 rounded-full bg-[#0070ba] hover:bg-[#003087] text-white font-black text-sm flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
+                                    >
+                                        {loading ? 'Recording...' : `Submit Payment (${formatCurrency(amount, activeCurrency)})`}
+                                    </button>
+
+                                    <div className="pt-1 flex items-center justify-center gap-1.5 text-[11px] text-[#665d55]">
+                                        <ShieldCheck className="w-3.5 h-3.5 text-[#0070ba]" />
+                                        <span>Payment is safely held in HomeBiz Escrow until verified by administration</span>
+                                    </div>
+                                </div>
                             </div>
                         )}
 

@@ -11,6 +11,7 @@ import {
   Conversation,
   PricingPlan,
   SellerSubscription,
+  ServiceItem,
 } from '../types';
 
 export const SupabaseDb = {
@@ -153,17 +154,229 @@ export const SupabaseDb = {
     }
   },
 
+  async upsertVendor(vendor: VendorProfile): Promise<string | null> {
+    if (!isSupabaseConfigured) return null;
+    try {
+      const payload: any = {
+        business_name: vendor.businessName,
+        slug: vendor.slug,
+        tagline: vendor.tagline || '',
+        description: vendor.description || '',
+        category: vendor.category,
+        subcategories: vendor.subcategories || [],
+        city: vendor.city,
+        locality: vendor.locality,
+        exact_address: vendor.exactAddress,
+        show_exact_address: vendor.showExactAddress,
+        cover_image: vendor.coverImage,
+        avatar: vendor.avatar,
+        gallery: vendor.gallery || [],
+        starting_price: vendor.startingPrice,
+        rating: vendor.rating || 5.0,
+        review_count: vendor.reviewCount || 0,
+        response_time: vendor.responseTime || '< 30 mins',
+        experience_years: vendor.experienceYears || 1,
+        status: vendor.status || 'PENDING_APPROVAL',
+        verification_status: vendor.verificationStatus || 'PENDING',
+        is_featured: vendor.isFeatured || false,
+        service_areas: vendor.serviceAreas || [],
+        specialties: vendor.specialties || [],
+        availability_notice: vendor.availabilityNotice || '',
+        coordinates: vendor.coordinates || { lat: 31.5204, lng: 74.3587 },
+        current_plan: vendor.currentPlan || 'free',
+      };
+
+      const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+
+      if (isUuid(vendor.userId)) {
+        payload.user_id = vendor.userId;
+      }
+      if (isUuid(vendor.id)) {
+        payload.id = vendor.id;
+      }
+
+      const { data, error } = await supabase
+        .from('vendors')
+        .upsert(payload, { onConflict: isUuid(vendor.id) ? 'id' : 'slug' })
+        .select('id')
+        .maybeSingle();
+
+      if (error) {
+        console.warn('Supabase upsertVendor warning:', error.message);
+        return null;
+      }
+
+      const realVendorId = data?.id || (isUuid(vendor.id) ? vendor.id : null);
+
+      if (realVendorId && vendor.services && vendor.services.length > 0) {
+        for (const s of vendor.services) {
+          await SupabaseDb.addVendorService(realVendorId, s);
+        }
+      }
+
+      return realVendorId;
+    } catch (err) {
+      console.warn('Supabase upsertVendor exception:', err);
+      return null;
+    }
+  },
+
+  async addVendorService(vendorIdOrSlug: string, service: ServiceItem): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    try {
+      const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+
+      let resolvedVendorId = isUuid(vendorIdOrSlug) ? vendorIdOrSlug : null;
+      if (!resolvedVendorId) {
+        const { data: v } = await supabase
+          .from('vendors')
+          .select('id')
+          .eq('slug', vendorIdOrSlug)
+          .maybeSingle();
+        if (v) resolvedVendorId = v.id;
+      }
+
+      if (!resolvedVendorId) {
+        console.warn('Could not resolve vendor ID for service insertion:', vendorIdOrSlug);
+        return false;
+      }
+
+      const payload: any = {
+        vendor_id: resolvedVendorId,
+        title: service.title,
+        description: service.description || '',
+        price: service.price,
+        duration: service.duration || '24 hours',
+        notice_period: service.noticePeriod || '',
+        image: service.image || '',
+        category: service.category || '',
+        addons: service.addons || [],
+        is_popular: service.isPopular || false,
+      };
+
+      if (isUuid(service.id)) {
+        payload.id = service.id;
+      }
+
+      const { error } = await supabase
+        .from('services')
+        .insert(payload);
+
+      if (error) {
+        console.warn('Supabase addVendorService warning:', error.message);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.warn('Supabase addVendorService exception:', err);
+      return false;
+    }
+  },
+
+  async deleteVendorService(serviceId: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+    if (!isUuid(serviceId)) return false;
+    try {
+      const { error } = await supabase.from('services').delete().eq('id', serviceId);
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.warn('Supabase deleteVendorService error:', err);
+      return false;
+    }
+  },
+
+  async updateVendorVerification(vendorIdOrSlug: string, status: 'VERIFIED' | 'REJECTED' | 'PENDING' | 'UNVERIFIED'): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    try {
+      const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+      const dbStatus = status === 'VERIFIED' ? 'APPROVED' : status === 'REJECTED' ? 'REJECTED' : 'PENDING_APPROVAL';
+      
+      const updatePayload = {
+        verification_status: status,
+        status: dbStatus,
+      };
+
+      if (isUuid(vendorIdOrSlug)) {
+        await supabase.from('vendors').update(updatePayload).eq('id', vendorIdOrSlug);
+      } else {
+        await supabase.from('vendors').update(updatePayload).eq('slug', vendorIdOrSlug);
+      }
+      return true;
+    } catch (err) {
+      console.warn('Supabase updateVendorVerification error:', err);
+      return false;
+    }
+  },
+
   // 5. Bookings
+  async getBookings(filter?: { vendorSlug?: string; customerEmail?: string }): Promise<Booking[]> {
+    if (!isSupabaseConfigured) return [];
+    try {
+      let query = supabase.from('bookings').select('*').order('created_at', { ascending: false });
+      if (filter?.vendorSlug) {
+        query = query.eq('vendor_slug', filter.vendorSlug);
+      }
+      if (filter?.customerEmail) {
+        query = query.eq('customer_email', filter.customerEmail);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      if (!data) return [];
+      return data.map((b) => ({
+        id: b.id,
+        bookingNumber: b.booking_number,
+        customerId: b.customer_id || 'guest',
+        customerName: b.customer_name,
+        customerPhone: b.customer_phone || '',
+        customerEmail: b.customer_email || '',
+        vendorId: b.vendor_id || '',
+        vendorName: b.vendor_name,
+        vendorSlug: b.vendor_slug || '',
+        serviceId: b.service_id || 'srv-default',
+        serviceTitle: b.service_title,
+        serviceImage: b.service_image,
+        date: b.date,
+        timeSlot: b.time_slot,
+        notes: b.notes || '',
+        deliveryAddress: b.delivery_address || '',
+        deliveryType: b.delivery_type || 'DELIVERY',
+        selectedAddons: b.selected_addons || [],
+        subtotal: Number(b.subtotal),
+        addonsTotal: Number(b.addons_total || 0),
+        platformFee: Number(b.platform_fee || 0),
+        discount: Number(b.discount || 0),
+        total: Number(b.total),
+        status: b.status,
+        paymentStatus: b.payment_status,
+        paymentMethod: b.payment_method,
+        createdAt: b.created_at,
+      }));
+    } catch (err) {
+      console.warn('Supabase getBookings error:', err);
+      return [];
+    }
+  },
+
   async createBooking(booking: Booking): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
+      const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+
+      let resolvedVendorId = isUuid(booking.vendorId) ? booking.vendorId : null;
+      if (!resolvedVendorId && booking.vendorSlug) {
+        const { data: v } = await supabase.from('vendors').select('id').eq('slug', booking.vendorSlug).maybeSingle();
+        if (v) resolvedVendorId = v.id;
+      }
+
       const { error } = await supabase.from('bookings').insert({
         booking_number: booking.bookingNumber,
-        customer_id: booking.customerId.startsWith('user-') ? null : booking.customerId,
+        customer_id: isUuid(booking.customerId) ? booking.customerId : null,
         customer_name: booking.customerName,
         customer_phone: booking.customerPhone,
         customer_email: booking.customerEmail,
-        vendor_id: booking.vendorId.startsWith('vendor-') ? null : booking.vendorId,
+        vendor_id: resolvedVendorId,
         vendor_name: booking.vendorName,
         vendor_slug: booking.vendorSlug,
         service_title: booking.serviceTitle,
@@ -187,6 +400,26 @@ export const SupabaseDb = {
       return true;
     } catch (err) {
       console.warn('Supabase createBooking error:', err);
+      return false;
+    }
+  },
+
+  async updateBookingStatus(bookingNumber: string, status: string, paymentStatus?: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    try {
+      const updateData: any = { status };
+      if (paymentStatus) {
+        updateData.payment_status = paymentStatus;
+      }
+      const { error } = await supabase
+        .from('bookings')
+        .update(updateData)
+        .eq('booking_number', bookingNumber);
+
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.warn('Supabase updateBookingStatus error:', err);
       return false;
     }
   },

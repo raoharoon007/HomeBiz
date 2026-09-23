@@ -356,11 +356,17 @@ export const Storage = {
     if (idx >= 0) vendors[idx] = vendor;
     else vendors.push(vendor);
     safeSetItem(STORAGE_KEYS.VENDORS, vendors);
+
+    // Sync to Supabase live database in background
+    SupabaseDb.upsertVendor(vendor).catch((e) => console.warn('Supabase vendor sync error:', e));
   },
   registerVendor: (vendor: VendorProfile): void => {
     const vendors = Storage.getVendors();
     vendors.unshift(vendor);
     safeSetItem(STORAGE_KEYS.VENDORS, vendors);
+
+    // Sync to Supabase live database in background
+    SupabaseDb.upsertVendor(vendor).catch((e) => console.warn('Supabase vendor registration sync error:', e));
   },
   updateVendorVerification: (vendorId: string, status: VendorProfile['verificationStatus']): void => {
     const vendors = Storage.getVendors();
@@ -375,6 +381,11 @@ export const Storage = {
         v.status = 'PENDING_APPROVAL';
       }
       safeSetItem(STORAGE_KEYS.VENDORS, vendors);
+
+      // Sync to Supabase live database in background
+      SupabaseDb.updateVendorVerification(v.id || v.slug, status).catch((e) =>
+        console.warn('Supabase vendor verification sync error:', e)
+      );
     }
   },
   toggleVendorFeatured: (vendorId: string): void => {
@@ -383,6 +394,7 @@ export const Storage = {
     if (v) {
       v.isFeatured = !v.isFeatured;
       safeSetItem(STORAGE_KEYS.VENDORS, vendors);
+      SupabaseDb.upsertVendor(v).catch((e) => console.warn('Supabase featured sync error:', e));
     }
   },
   addVendorService: (vendorId: string, service: ServiceItem): void => {
@@ -391,6 +403,24 @@ export const Storage = {
     if (v) {
       v.services = [...v.services, service];
       safeSetItem(STORAGE_KEYS.VENDORS, vendors);
+
+      // Sync service to Supabase live database in background
+      SupabaseDb.addVendorService(v.id || v.slug, service).catch((e) =>
+        console.warn('Supabase service creation sync error:', e)
+      );
+    }
+  },
+  deleteVendorService: (vendorId: string, serviceId: string): void => {
+    const vendors = Storage.getVendors();
+    const v = vendors.find((item) => item.id === vendorId);
+    if (v) {
+      v.services = v.services.filter((s) => s.id !== serviceId);
+      safeSetItem(STORAGE_KEYS.VENDORS, vendors);
+
+      // Sync delete to Supabase live database in background
+      SupabaseDb.deleteVendorService(serviceId).catch((e) =>
+        console.warn('Supabase service delete sync error:', e)
+      );
     }
   },
 
@@ -427,6 +457,11 @@ export const Storage = {
       booking.status = status;
       safeSetItem(STORAGE_KEYS.BOOKINGS, bookings);
 
+      // Sync status to Supabase in background
+      SupabaseDb.updateBookingStatus(booking.bookingNumber, booking.status, booking.paymentStatus).catch((e) =>
+        console.warn('Supabase booking status sync error:', e)
+      );
+
       // Notify customer
       Storage.createNotification({
         id: `notif-${Date.now()}`,
@@ -451,6 +486,11 @@ export const Storage = {
         booking.status = 'CONFIRMED';
       }
       safeSetItem(STORAGE_KEYS.BOOKINGS, bookings);
+
+      // Sync payment status to Supabase in background
+      SupabaseDb.updateBookingStatus(booking.bookingNumber, booking.status, booking.paymentStatus).catch((e) =>
+        console.warn('Supabase booking payment sync error:', e)
+      );
 
       // Notify customer
       Storage.createNotification({
