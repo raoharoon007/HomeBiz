@@ -63,7 +63,7 @@ function AppContent() {
           window.localStorage.setItem('hb_vendors_v1', JSON.stringify(Array.from(mergedMap.values())));
         }
         if (remoteRequests.length > 0) {
-          const currentRequests = Storage.getCustomerRequests();
+          const currentRequests = Storage.getRequests();
           const reqMap = new Map<string, any>();
           currentRequests.forEach((r) => reqMap.set(r.id || r.requestNumber, r));
           remoteRequests.forEach((r) => reqMap.set(r.id || r.requestNumber, r));

@@ -505,6 +505,7 @@ export const Storage = {
 
   // Customer Requests
   getRequests: (): CustomerRequest[] => safeGetItem(STORAGE_KEYS.REQUESTS, SEED_REQUESTS),
+  getCustomerRequests: (): CustomerRequest[] => Storage.getRequests(),
   getRequestById: (id: string): CustomerRequest | undefined => Storage.getRequests().find((r) => r.id === id),
   createRequest: (request: CustomerRequest): void => {
     const requests = Storage.getRequests();

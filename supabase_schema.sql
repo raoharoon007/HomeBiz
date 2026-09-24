@@ -887,6 +887,10 @@ TO authenticated
 WITH CHECK (
   bucket_id = 'homebiz-media'
   AND (storage.foldername(name))[1] IN ('avatars', 'covers', 'gallery', 'services', 'requests')
+  AND (
+    array_length(storage.foldername(name), 1) = 1
+    OR (storage.foldername(name))[2] = (auth.uid())::text
+  )
 );
 
 -- Storage RLS: Owner or Admin update/delete
