@@ -96,6 +96,57 @@ export const SupabaseDb = {
     }
   },
 
+  // 3b. Update Pricing Plan (Admin only)
+  async updatePricingPlan(
+    idOrSlug: string,
+    updates: {
+      priceMonthly?: number;
+      priceYearly?: number;
+      active?: boolean;
+      name?: string;
+      description?: string;
+    },
+    planSlug?: string
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!isSupabaseConfigured) {
+      return { success: false, error: 'Supabase is not configured' };
+    }
+    try {
+      const payload: Record<string, any> = {};
+      if (updates.priceMonthly !== undefined) payload.price_monthly = Number(updates.priceMonthly);
+      if (updates.priceYearly !== undefined) payload.price_yearly = Number(updates.priceYearly);
+      if (updates.active !== undefined) payload.active = Boolean(updates.active);
+      if (updates.name !== undefined) payload.name = updates.name;
+      if (updates.description !== undefined) payload.description = updates.description;
+
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug);
+
+      if (isUuid) {
+        const { error: uuidErr } = await supabase
+          .from('pricing_plans')
+          .update(payload)
+          .eq('id', idOrSlug);
+        if (!uuidErr) return { success: true };
+      }
+
+      // Match by slug (e.g. 'pro', 'featured', 'free')
+      const targetSlug = (planSlug || idOrSlug).replace(/^plan-/, '');
+      const { error: slugErr } = await supabase
+        .from('pricing_plans')
+        .update(payload)
+        .eq('slug', targetSlug);
+
+      if (slugErr) {
+        console.error('Supabase updatePricingPlan error:', slugErr);
+        return { success: false, error: slugErr.message };
+      }
+      return { success: true };
+    } catch (err: any) {
+      console.error('Supabase updatePricingPlan exception:', err);
+      return { success: false, error: err.message || 'Unknown error' };
+    }
+  },
+
   // 4. Vendors
   async getVendors(): Promise<VendorProfile[]> {
     if (!isSupabaseConfigured) return [];
@@ -311,7 +362,7 @@ export const SupabaseDb = {
   },
 
   // 5. Bookings
-  async getBookings(filter?: { vendorSlug?: string; customerEmail?: string }): Promise<Booking[]> {
+  async getBookings(filter?: { vendorSlug?: string; customerEmail?: string; customerId?: string; vendorId?: string }): Promise<Booking[]> {
     if (!isSupabaseConfigured) return [];
     try {
       let query = supabase.from('bookings').select('*').order('created_at', { ascending: false });
@@ -320,6 +371,12 @@ export const SupabaseDb = {
       }
       if (filter?.customerEmail) {
         query = query.eq('customer_email', filter.customerEmail);
+      }
+      if (filter?.customerId) {
+        query = query.eq('customer_id', filter.customerId);
+      }
+      if (filter?.vendorId) {
+        query = query.eq('vendor_id', filter.vendorId);
       }
       const { data, error } = await query;
       if (error) throw error;
@@ -538,6 +595,219 @@ export const SupabaseDb = {
     } catch (err) {
       console.warn('Supabase createReview error:', err);
       return false;
+    }
+  },
+
+  async getReviews(vendorId?: string): Promise<Review[]> {
+    if (!isSupabaseConfigured) return [];
+    try {
+      let query = supabase.from('reviews').select('*').eq('status', 'PUBLISHED').order('created_at', { ascending: false });
+      if (vendorId) {
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(vendorId);
+        if (isUuid) {
+          query = query.eq('vendor_id', vendorId);
+        }
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      if (!data) return [];
+      return data.map((rev) => ({
+        id: rev.id,
+        vendorId: rev.vendor_id || '',
+        bookingId: rev.booking_id,
+        customerId: rev.customer_id || '',
+        customerName: rev.customer_name,
+        customerAvatar: rev.customer_avatar,
+        rating: rev.rating,
+        comment: rev.comment,
+        sellerReply: rev.seller_reply,
+        status: rev.status,
+        createdAt: rev.created_at,
+      }));
+    } catch (err) {
+      console.warn('Supabase getReviews error:', err);
+      return [];
+    }
+  },
+
+  // 10. Subscriptions
+  async getSubscriptions(): Promise<SellerSubscription[]> {
+    if (!isSupabaseConfigured) return [];
+    try {
+      const { data, error } = await supabase
+        .from('seller_subscriptions')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      if (!data) return [];
+      return data.map((s) => ({
+        id: s.id,
+        vendorId: s.vendor_id,
+        planId: s.plan_id || '',
+        plan: s.plan,
+        status: s.status,
+        billingPeriod: s.billing_period || 'monthly',
+        priceAtPurchase: Number(s.price_at_purchase || 0),
+        startDate: s.start_date || s.created_at,
+        renewalDate: s.renewal_date || '',
+        paymentMethod: s.payment_method || 'CARD',
+        paymentStatus: s.payment_status || 'PENDING',
+        transactionId: s.transaction_id,
+        providerReference: s.provider_reference,
+        lastPaymentAt: s.last_payment_at,
+        autoRenew: Boolean(s.auto_renew),
+        createdAt: s.created_at,
+        updatedAt: s.created_at,
+      }));
+    } catch (err) {
+      console.warn('Supabase getSubscriptions error:', err);
+      return [];
+    }
+  },
+
+  async upsertSubscription(sub: SellerSubscription): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    try {
+      const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+      let resolvedVendorId = isUuid(sub.vendorId) ? sub.vendorId : null;
+      if (!resolvedVendorId) {
+        const { data: v } = await supabase.from('vendors').select('id').eq('slug', sub.vendorId).maybeSingle();
+        if (v) resolvedVendorId = v.id;
+      }
+      if (!resolvedVendorId) return false;
+
+      const payload: any = {
+        vendor_id: resolvedVendorId,
+        plan: sub.plan,
+        status: sub.status,
+        billing_period: sub.billingPeriod,
+        price_at_purchase: sub.priceAtPurchase,
+        payment_method: sub.paymentMethod,
+        payment_status: sub.paymentStatus,
+        auto_renew: sub.autoRenew ?? true,
+      };
+
+      if (isUuid(sub.id)) {
+        payload.id = sub.id;
+      }
+      if (isUuid(sub.planId)) {
+        payload.plan_id = sub.planId;
+      }
+      if (sub.renewalDate) {
+        payload.renewal_date = sub.renewalDate;
+      }
+
+      const { error } = await supabase
+        .from('seller_subscriptions')
+        .upsert(payload, { onConflict: isUuid(sub.id) ? 'id' : undefined });
+
+      if (error) {
+        console.warn('Supabase upsertSubscription error:', error.message);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.warn('Supabase upsertSubscription exception:', err);
+      return false;
+    }
+  },
+
+  async updateSubscriptionStatus(id: string, status: string, paymentStatus: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    try {
+      const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+      if (!isUuid(id)) return false;
+
+      const { error } = await supabase
+        .from('seller_subscriptions')
+        .update({
+          status,
+          payment_status: paymentStatus,
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.warn('Supabase updateSubscriptionStatus error:', err);
+      return false;
+    }
+  },
+
+  // 11. Customer Requests Reader
+  async getCustomerRequests(): Promise<CustomerRequest[]> {
+    if (!isSupabaseConfigured) return [];
+    try {
+      const { data, error } = await supabase
+        .from('customer_requests')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      if (!data) return [];
+      return data.map((r) => ({
+        id: r.id,
+        requestNumber: r.request_number,
+        customerId: r.customer_id || 'guest',
+        customerName: r.customer_name,
+        customerAvatar: r.customer_avatar,
+        category: r.category,
+        serviceNeeded: r.service_needed,
+        city: r.city,
+        area: r.area,
+        preferredDate: r.preferred_date,
+        budget: Number(r.budget),
+        guestCountOrQuantity: r.guest_count_or_quantity,
+        description: r.description,
+        deliveryMethod: r.delivery_method,
+        status: r.status,
+        photos: r.photos || [],
+        quoteCount: r.quote_count || 0,
+        createdAt: r.created_at,
+      }));
+    } catch (err) {
+      console.warn('Supabase getCustomerRequests error:', err);
+      return [];
+    }
+  },
+
+  // 12. Quotes Reader
+  async getQuotes(requestId?: string): Promise<Quote[]> {
+    if (!isSupabaseConfigured) return [];
+    try {
+      let query = supabase.from('quotes').select('*').order('created_at', { ascending: false });
+      if (requestId) {
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId);
+        if (isUuid) {
+          query = query.eq('request_id', requestId);
+        }
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      if (!data) return [];
+      return data.map((q) => ({
+        id: q.id,
+        quoteNumber: q.quote_number,
+        requestId: q.request_id || '',
+        vendorId: q.vendor_id || '',
+        vendorName: q.vendor_name,
+        vendorSlug: q.vendor_slug || '',
+        vendorAvatar: q.vendor_avatar || '',
+        vendorRating: Number(q.vendor_rating || 5.0),
+        vendorReviewCount: q.vendor_review_count || 0,
+        price: Number(q.price),
+        serviceFee: Number(q.service_fee || 0),
+        deliveryFee: Number(q.delivery_fee || 0),
+        totalPrice: Number(q.total_price),
+        itemsBreakdown: q.items_breakdown || [],
+        estimatedCompletion: q.estimated_completion || '',
+        message: q.message || '',
+        validUntil: q.valid_until || '',
+        status: q.status,
+        createdAt: q.created_at,
+      }));
+    } catch (err) {
+      console.warn('Supabase getQuotes error:', err);
+      return [];
     }
   },
 };

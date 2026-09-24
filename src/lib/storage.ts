@@ -211,16 +211,9 @@ export function initStorage() {
   safeSetItem(STORAGE_KEYS.CITIES, SEED_CITIES);
 }
 
-const getDefaultPasswordForEmail = (email: string): string => {
-  const normalized = email.toLowerCase();
-  if (normalized === 'admin@homebiz.pk') return 'Admin@123';
-  return '';
-};
-
 const migrateUsers = (users: User[]): User[] =>
   users.map((user) => ({
     ...user,
-    password: user.password ?? getDefaultPasswordForEmail(user.email),
   }));
 
 type UpgradeVendorPlanOptions = {
@@ -257,9 +250,6 @@ export const Storage = {
     return users.find((u) => {
       const emailMatch = u.email.toLowerCase() === email.toLowerCase();
       if (!password) return emailMatch;
-      if (emailMatch && u.email.toLowerCase() === 'admin@homebiz.pk') {
-        return password === 'Admin@123' || password === 'admin123';
-      }
       return emailMatch && u.password === password;
     });
   },
@@ -300,11 +290,15 @@ export const Storage = {
   getVendorByUserId: (userId: string): VendorProfile | undefined => Storage.getVendors().find((v) => v.userId === userId),
   getSellerVendor: (userId: string): VendorProfile | undefined => {
     const user = Storage.getUserById(userId);
-    return (
+    const vendor = (
       Storage.getVendors().find(
         (v) => v.userId === userId || (user?.sellerProfileId && v.id === user.sellerProfileId)
       ) || (user?.sellerProfileId ? Storage.getVendorById(user.sellerProfileId) : undefined)
     );
+    if (vendor) {
+      Storage.checkSubscriptionExpiration(vendor.id);
+    }
+    return vendor;
   },
   ensureSellerVendor: (user: User): VendorProfile => {
     const existing = Storage.getSellerVendor(user.id);
@@ -1212,9 +1206,19 @@ From single mothers running catering setups to university students selling handm
   getPricingPlanById: (id: string): PricingPlan | undefined =>
     Storage.getPricingPlans().find((p) => p.id === id),
 
-  updatePricingPlan: (id: string, updates: Partial<PricingPlan>): void => {
+  setPricingPlans: (plans: PricingPlan[]): void => {
+    safeSetItem(STORAGE_KEYS.PRICING_PLANS, plans);
+  },
+
+  updatePricingPlan: (idOrSlug: string, updates: Partial<PricingPlan>): void => {
     const plans = Storage.getPricingPlans();
-    const idx = plans.findIndex((p) => p.id === id);
+    const idx = plans.findIndex(
+      (p) =>
+        p.id === idOrSlug ||
+        p.slug === idOrSlug ||
+        p.id === `plan-${idOrSlug}` ||
+        p.slug === idOrSlug.replace(/^plan-/, '')
+    );
     if (idx >= 0) {
       plans[idx] = { ...plans[idx], ...updates, updatedAt: new Date().toISOString() };
       safeSetItem(STORAGE_KEYS.PRICING_PLANS, plans);
@@ -1242,6 +1246,11 @@ From single mothers running catering setups to university students selling handm
       vendor.subscriptionId = subscription.id;
       Storage.saveVendor(vendor);
     }
+
+    // Sync subscription to Supabase database
+    SupabaseDb.upsertSubscription(subscription).catch((e) =>
+      console.warn('Supabase createSubscription sync error:', e)
+    );
   },
 
   updateSubscription: (id: string, updates: Partial<SellerSubscription>): void => {
@@ -1250,7 +1259,107 @@ From single mothers running catering setups to university students selling handm
     if (idx >= 0) {
       subs[idx] = { ...subs[idx], ...updates, updatedAt: new Date().toISOString() };
       safeSetItem(STORAGE_KEYS.SUBSCRIPTIONS, subs);
+
+      // Sync updated subscription to Supabase database
+      SupabaseDb.upsertSubscription(subs[idx]).catch((e) =>
+        console.warn('Supabase updateSubscription sync error:', e)
+      );
     }
+  },
+
+  checkSubscriptionExpiration: (vendorId: string): void => {
+    const sub = Storage.getSubscriptionByVendorId(vendorId);
+    if (!sub || sub.plan === 'free' || sub.status !== 'ACTIVE') return;
+
+    if (sub.renewalDate) {
+      const renewalTime = new Date(sub.renewalDate).getTime();
+      const now = Date.now();
+      if (renewalTime < now) {
+        sub.status = 'EXPIRED';
+        sub.updatedAt = new Date().toISOString();
+        Storage.updateSubscription(sub.id, sub);
+
+        const vendor = Storage.getVendorById(vendorId);
+        if (vendor && vendor.currentPlan !== 'free') {
+          vendor.currentPlan = 'free';
+          Storage.saveVendor(vendor);
+
+          Storage.createNotification({
+            id: `notif-sub-expired-${Date.now()}`,
+            userId: vendor.userId,
+            title: '⚠️ Subscription Expired',
+            message: `Your ${sub.plan.toUpperCase()} plan has expired. Your storefront has returned to the Starter/Free tier. Please renew to restore Pro benefits.`,
+            type: 'SYSTEM_ANNOUNCEMENT',
+            link: '/seller/dashboard/plan',
+            read: false,
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
+    }
+  },
+
+  verifySubscription: (
+    subscriptionId: string,
+    decision: 'APPROVE' | 'REJECT',
+    adminNotes?: string
+  ): boolean => {
+    const subs = Storage.getSubscriptions();
+    const idx = subs.findIndex((s) => s.id === subscriptionId);
+    if (idx < 0) return false;
+
+    const sub = subs[idx];
+    const now = new Date().toISOString();
+
+    if (decision === 'APPROVE') {
+      sub.status = 'ACTIVE';
+      sub.paymentStatus = 'PAID';
+      sub.lastPaymentAt = now;
+      sub.updatedAt = now;
+
+      // Update the vendor's active plan
+      const vendor = Storage.getVendorById(sub.vendorId);
+      if (vendor) {
+        vendor.currentPlan = sub.plan;
+        vendor.subscriptionId = sub.id;
+        Storage.saveVendor(vendor);
+
+        Storage.createNotification({
+          id: `notif-sub-approved-${Date.now()}`,
+          userId: vendor.userId,
+          title: '🎉 Subscription Verified & Active!',
+          message: `Your upgrade to the ${sub.plan.toUpperCase()} plan has been verified by the platform administration. Pro features and priority search ranking are now active!`,
+          type: 'SYSTEM_ANNOUNCEMENT',
+          link: '/seller/dashboard/plan',
+          read: false,
+          createdAt: now,
+        });
+      }
+    } else {
+      sub.status = 'REJECTED';
+      sub.paymentStatus = 'FAILED';
+      sub.updatedAt = now;
+
+      const vendor = Storage.getVendorById(sub.vendorId);
+      if (vendor) {
+        Storage.createNotification({
+          id: `notif-sub-rejected-${Date.now()}`,
+          userId: vendor.userId,
+          title: '⚠️ Subscription Payment Verification Notice',
+          message: adminNotes || 'Your subscription payment details could not be verified by the platform administration. Please check your transaction reference or contact admin support.',
+          type: 'SYSTEM_ANNOUNCEMENT',
+          link: '/seller/dashboard/plan',
+          read: false,
+          createdAt: now,
+        });
+      }
+    }
+
+    Storage.updateSubscription(sub.id, sub);
+    SupabaseDb.updateSubscriptionStatus(sub.id, sub.status, sub.paymentStatus).catch((e) =>
+      console.warn('Supabase verifySubscription status sync error:', e)
+    );
+    return true;
   },
 
   upgradeVendorPlan: (
@@ -1270,8 +1379,11 @@ From single mothers running catering setups to university students selling handm
     const priceAtPurchase =
       options.priceAtPurchase ??
       (billingPeriod === 'yearly' ? newPlanData.priceYearly : newPlanData.priceMonthly);
-    const paymentStatus = options.paymentStatus || 'PAID';
-    const paymentMethod = options.paymentMethod || (priceAtPurchase === 0 ? 'MANUAL' : 'CARD');
+
+    const isFree = newPlan === 'free' || priceAtPurchase === 0;
+    const initialStatus = isFree ? 'ACTIVE' : 'PENDING_VERIFICATION';
+    const initialPaymentStatus = isFree ? 'PAID' : 'PENDING_VERIFICATION';
+    const paymentMethod = options.paymentMethod || (isFree ? 'MANUAL' : 'CARD');
 
     let savedSubscription: SellerSubscription;
 
@@ -1280,15 +1392,15 @@ From single mothers running catering setups to university students selling handm
         ...existingSub,
         plan: newPlan,
         planId: newPlanData.id,
-        status: 'ACTIVE',
+        status: initialStatus,
         billingPeriod,
         priceAtPurchase,
         renewalDate: renewalDate.toISOString(),
         paymentMethod,
-        paymentStatus,
+        paymentStatus: initialPaymentStatus,
         transactionId: options.transactionId || existingSub.transactionId,
         providerReference: options.providerReference || existingSub.providerReference,
-        lastPaymentAt: paymentStatus === 'PAID' ? now.toISOString() : existingSub.lastPaymentAt,
+        lastPaymentAt: isFree ? now.toISOString() : existingSub.lastPaymentAt,
         updatedAt: now.toISOString(),
       };
       Storage.updateSubscription(existingSub.id, savedSubscription);
@@ -1298,16 +1410,16 @@ From single mothers running catering setups to university students selling handm
         vendorId,
         planId: newPlanData.id,
         plan: newPlan,
-        status: 'ACTIVE',
+        status: initialStatus,
         billingPeriod,
         priceAtPurchase,
         startDate: now.toISOString(),
         renewalDate: renewalDate.toISOString(),
         paymentMethod,
-        paymentStatus,
+        paymentStatus: initialPaymentStatus,
         transactionId: options.transactionId,
         providerReference: options.providerReference,
-        lastPaymentAt: paymentStatus === 'PAID' ? now.toISOString() : undefined,
+        lastPaymentAt: isFree ? now.toISOString() : undefined,
         autoRenew: true,
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
@@ -1317,19 +1429,46 @@ From single mothers running catering setups to university students selling handm
 
     const vendor = Storage.getVendorById(vendorId);
     if (vendor) {
-      vendor.currentPlan = newPlan;
-      vendor.subscriptionId = savedSubscription.id;
-      Storage.saveVendor(vendor);
-      Storage.createNotification({
-        id: `notif-${Date.now()}-${savedSubscription.id}`,
-        userId: vendor.userId,
-        title: 'Subscription Updated',
-        message: `${newPlanData.name} is now active. Payment status: ${paymentStatus}.`,
-        type: 'SYSTEM_ANNOUNCEMENT',
-        link: '/seller/dashboard/plan',
-        read: false,
-        createdAt: now.toISOString(),
-      });
+      if (isFree) {
+        vendor.currentPlan = 'free';
+        vendor.subscriptionId = savedSubscription.id;
+        Storage.saveVendor(vendor);
+
+        Storage.createNotification({
+          id: `notif-${Date.now()}-${savedSubscription.id}`,
+          userId: vendor.userId,
+          title: 'Subscription Updated',
+          message: `${newPlanData.name} is now active.`,
+          type: 'SYSTEM_ANNOUNCEMENT',
+          link: '/seller/dashboard/plan',
+          read: false,
+          createdAt: now.toISOString(),
+        });
+      } else {
+        // Paid plan: Awaiting Admin verification!
+        Storage.createNotification({
+          id: `notif-${Date.now()}-${savedSubscription.id}`,
+          userId: vendor.userId,
+          title: '🛡️ Payment Verification In Progress',
+          message: `Your request to upgrade to ${newPlanData.name} (Ref: ${options.transactionId || 'Submitted'}) has been received. Platform administration will verify your transaction shortly to activate Pro features.`,
+          type: 'SYSTEM_ANNOUNCEMENT',
+          link: '/seller/dashboard/plan',
+          read: false,
+          createdAt: now.toISOString(),
+        });
+
+        // Notify Admin
+        Storage.createNotification({
+          id: `notif-admin-sub-${Date.now()}`,
+          userId: 'user-admin',
+          title: '💳 New Subscription Upgrade Verification Required',
+          message: `Seller "${vendor.businessName}" submitted a payment for ${newPlanData.name} (Ref: ${options.transactionId || 'N/A'}). Please verify in Admin Dashboard.`,
+          type: 'SYSTEM_ANNOUNCEMENT',
+          link: '/admin/dashboard/subscriptions',
+          read: false,
+          createdAt: now.toISOString(),
+        });
+      }
     }
 
     return savedSubscription;

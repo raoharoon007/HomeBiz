@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from '../../lib/navigation';
 import { useAuth } from '../../lib/authContext';
 import { PaymentGateway, PaymentResult } from './PaymentGateway';
 import { isAustralianLocation, formatCurrency, SupportedCurrency, REGIONAL_PLAN_PRICING } from '../../lib/countryUtils';
+import { Toast } from '../common/Toast';
 
 interface PricingCardsProps {
     onSelectPlan?: (planId: string) => void;
@@ -23,6 +24,7 @@ export function PricingCards({
     const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
     const [plans, setPlans] = useState<PricingPlan[]>([]);
     const [loadingPlanId, setLoadingPlanId] = useState<string | null>(null);
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
     const [checkoutPlan, setCheckoutPlan] = useState<{
         id: string;
         name: string;
@@ -149,7 +151,7 @@ export function PricingCards({
                     onSelectPlan(planId);
                 }
 
-                alert(`✅ Successfully upgraded to ${planSlug.toUpperCase()} plan!`);
+                setToast({ message: `Successfully upgraded to ${planSlug.toUpperCase()} plan!`, type: 'success' });
                 setLoadingPlanId(null);
             } catch (error) {
                 console.error('Error selecting plan:', error);
@@ -166,7 +168,7 @@ export function PricingCards({
             Storage.upgradeVendorPlan(user.sellerProfileId, checkoutPlan.slug, {
                 billingPeriod,
                 paymentMethod: payment.paymentMethod,
-                paymentStatus: 'PAID',
+                paymentStatus: 'PENDING_VERIFICATION',
                 priceAtPurchase: checkoutPlan.amount,
                 transactionId: payment.transactionId,
                 providerReference: payment.providerReference,
@@ -177,7 +179,13 @@ export function PricingCards({
             }
 
             setCheckoutPlan(null);
-            router.push('/seller/dashboard/plan');
+            setToast({
+                message: `Payment request submitted (#${payment.transactionId})! Upgrade to ${checkoutPlan.name} is now pending admin verification.`,
+                type: 'success',
+            });
+            setTimeout(() => {
+                router.push('/seller/dashboard/plan');
+            }, 1800);
         } catch (error) {
             console.error('Error completing plan upgrade:', error);
         } finally {
@@ -187,6 +195,13 @@ export function PricingCards({
 
     return (
         <div className="w-full space-y-12">
+            {toast && (
+                <Toast
+                    message={toast.message}
+                    type={toast.type}
+                    onClose={() => setToast(null)}
+                />
+            )}
             {/* Currency & Billing Toggles */}
             <div className="flex flex-col items-center justify-center gap-4">
                 {/* Region / Currency Selector */}

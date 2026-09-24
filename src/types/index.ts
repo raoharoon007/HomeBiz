@@ -19,7 +19,7 @@ export type VendorStatus = 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'SUSPE
 
 export type VerificationStatus = 'UNVERIFIED' | 'PENDING' | 'VERIFIED' | 'REJECTED';
 
-export type PaymentStatus = 'PENDING' | 'PAID' | 'REFUNDED' | 'FAILED' | 'CASH_ON_DELIVERY';
+export type PaymentStatus = 'PENDING' | 'PAID' | 'REFUNDED' | 'FAILED' | 'CASH_ON_DELIVERY' | 'PENDING_VERIFICATION';
 
 export type NotificationType =
   | 'BOOKING_CREATED'
@@ -349,7 +349,7 @@ export interface SellerSubscription {
   vendorId: string;
   planId: string;
   plan: SubscriptionPlan;
-  status: 'ACTIVE' | 'INACTIVE' | 'CANCELLED';
+  status: 'ACTIVE' | 'INACTIVE' | 'CANCELLED' | 'PENDING_VERIFICATION' | 'EXPIRED' | 'REJECTED';
   billingPeriod: 'monthly' | 'yearly';
   priceAtPurchase: number;
   startDate: string;

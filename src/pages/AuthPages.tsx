@@ -952,13 +952,9 @@ export function ForgotPasswordPage() {
         Storage.saveUser(users[userIndex]);
       }
 
-      // If Supabase Auth is enabled, update password in Supabase database
+      // If Supabase Auth is enabled, update password securely via Supabase Auth
       if (isSupabaseConfigured) {
         try {
-          await supabase.rpc('reset_user_password', {
-            user_email: normalizedEmail,
-            new_password: newPassword,
-          });
           await supabase.auth.updateUser({ password: newPassword });
         } catch (e) {
           console.warn('Supabase auth password update notice:', e);

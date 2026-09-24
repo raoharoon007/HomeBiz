@@ -1,9 +1,10 @@
 -- ==============================================================================
--- HomeBiz Pakistan - Supabase Database Schema & Initial Setup
+-- HomeBiz Pakistan & Australia - Supabase Database Schema & Production Setup
 -- ==============================================================================
 
 -- 1. EXTENSIONS
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- 2. USER PROFILES TABLE (Linked with Supabase Auth)
 CREATE TABLE IF NOT EXISTS public.profiles (
@@ -19,19 +20,43 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Automatic Profile Creation Trigger on Signup
+-- Admin verification helper function
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND role = 'ADMIN'
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+
+-- Automatic Profile Creation Trigger on Signup (Protects against ADMIN elevation)
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  assigned_role TEXT;
 BEGIN
+  -- Strict check: new signups can NEVER specify 'ADMIN' via client metadata
+  IF (new.raw_user_meta_data->>'role') = 'SELLER' THEN
+    assigned_role := 'SELLER';
+  ELSE
+    assigned_role := 'CUSTOMER';
+  END IF;
+
   INSERT INTO public.profiles (id, name, email, role, city, avatar)
   VALUES (
     new.id,
     COALESCE(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
     new.email,
-    COALESCE(new.raw_user_meta_data->>'role', 'CUSTOMER'),
+    assigned_role,
     COALESCE(new.raw_user_meta_data->>'city', 'Lahore'),
     COALESCE(new.raw_user_meta_data->>'avatar', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80')
-  );
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    avatar = EXCLUDED.avatar;
+
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -40,6 +65,22 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+
+-- Trigger to prevent non-admins from changing their role in profiles
+CREATE OR REPLACE FUNCTION public.protect_user_role()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.role <> OLD.role AND NOT public.is_admin() THEN
+    NEW.role := OLD.role;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_protect_user_role ON public.profiles;
+CREATE TRIGGER trg_protect_user_role
+  BEFORE UPDATE ON public.profiles
+  FOR EACH ROW EXECUTE PROCEDURE public.protect_user_role();
 
 -- 3. CITIES TABLE
 CREATE TABLE IF NOT EXISTS public.cities (
@@ -99,13 +140,34 @@ CREATE TABLE IF NOT EXISTS public.vendors (
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- Trigger to prevent sellers from self-approving or upgrading their plan directly
+CREATE OR REPLACE FUNCTION public.protect_vendor_status()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NOT public.is_admin() THEN
+    NEW.status := OLD.status;
+    NEW.verification_status := OLD.verification_status;
+    NEW.is_featured := OLD.is_featured;
+    NEW.current_plan := OLD.current_plan;
+    NEW.rating := OLD.rating;
+    NEW.review_count := OLD.review_count;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_protect_vendor_status ON public.vendors;
+CREATE TRIGGER trg_protect_vendor_status
+  BEFORE UPDATE ON public.vendors
+  FOR EACH ROW EXECUTE PROCEDURE public.protect_vendor_status();
+
 -- 6. SERVICES TABLE
 CREATE TABLE IF NOT EXISTS public.services (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   vendor_id UUID REFERENCES public.vendors(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   description TEXT,
-  price NUMERIC NOT NULL,
+  price NUMERIC NOT NULL CHECK (price >= 0),
   duration TEXT,
   notice_period TEXT,
   image TEXT,
@@ -127,7 +189,7 @@ CREATE TABLE IF NOT EXISTS public.customer_requests (
   city TEXT NOT NULL,
   area TEXT NOT NULL,
   preferred_date TEXT,
-  budget NUMERIC DEFAULT 0,
+  budget NUMERIC DEFAULT 0 CHECK (budget >= 0),
   guest_count_or_quantity TEXT,
   description TEXT NOT NULL,
   delivery_method TEXT DEFAULT 'DELIVERY',
@@ -148,10 +210,10 @@ CREATE TABLE IF NOT EXISTS public.quotes (
   vendor_avatar TEXT,
   vendor_rating NUMERIC DEFAULT 5.0,
   vendor_review_count INT DEFAULT 0,
-  price NUMERIC NOT NULL,
-  service_fee NUMERIC DEFAULT 0,
-  delivery_fee NUMERIC DEFAULT 0,
-  total_price NUMERIC NOT NULL,
+  price NUMERIC NOT NULL CHECK (price >= 0),
+  service_fee NUMERIC DEFAULT 0 CHECK (service_fee >= 0),
+  delivery_fee NUMERIC DEFAULT 0 CHECK (delivery_fee >= 0),
+  total_price NUMERIC NOT NULL CHECK (total_price >= 0),
   items_breakdown JSONB DEFAULT '[]'::jsonb,
   estimated_completion TEXT,
   message TEXT,
@@ -180,16 +242,37 @@ CREATE TABLE IF NOT EXISTS public.bookings (
   delivery_address TEXT,
   delivery_type TEXT DEFAULT 'DELIVERY',
   selected_addons JSONB DEFAULT '[]'::jsonb,
-  subtotal NUMERIC NOT NULL,
-  addons_total NUMERIC DEFAULT 0,
-  platform_fee NUMERIC DEFAULT 0,
-  discount NUMERIC DEFAULT 0,
-  total NUMERIC NOT NULL,
+  subtotal NUMERIC NOT NULL CHECK (subtotal >= 0),
+  addons_total NUMERIC DEFAULT 0 CHECK (addons_total >= 0),
+  platform_fee NUMERIC DEFAULT 0 CHECK (platform_fee >= 0),
+  discount NUMERIC DEFAULT 0 CHECK (discount >= 0),
+  total NUMERIC NOT NULL CHECK (total >= 0),
   status TEXT DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'CONFIRMED', 'UPCOMING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'DISPUTED')),
   payment_status TEXT DEFAULT 'PENDING' CHECK (payment_status IN ('PENDING', 'PAID', 'REFUNDED', 'FAILED', 'CASH_ON_DELIVERY')),
   payment_method TEXT DEFAULT 'CASH_ON_DELIVERY',
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Trigger to prevent booking financial manipulation
+CREATE OR REPLACE FUNCTION public.protect_booking_financials()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NOT public.is_admin() THEN
+    NEW.subtotal := OLD.subtotal;
+    NEW.total := OLD.total;
+    NEW.platform_fee := OLD.platform_fee;
+    NEW.discount := OLD.discount;
+    NEW.customer_id := OLD.customer_id;
+    NEW.vendor_id := OLD.vendor_id;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_protect_booking_financials ON public.bookings;
+CREATE TRIGGER trg_protect_booking_financials
+  BEFORE UPDATE ON public.bookings
+  FOR EACH ROW EXECUTE PROCEDURE public.protect_booking_financials();
 
 -- 10. REVIEWS & RATINGS
 CREATE TABLE IF NOT EXISTS public.reviews (
@@ -205,6 +288,11 @@ CREATE TABLE IF NOT EXISTS public.reviews (
   status TEXT DEFAULT 'PUBLISHED' CHECK (status IN ('PUBLISHED', 'FLAGGED', 'HIDDEN')),
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- One review per booking constraint
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_booking_review
+  ON public.reviews (customer_id, booking_id)
+  WHERE booking_id IS NOT NULL;
 
 -- 11. CHAT CONVERSATIONS & MESSAGES
 CREATE TABLE IF NOT EXISTS public.conversations (
@@ -262,8 +350,8 @@ CREATE TABLE IF NOT EXISTS public.pricing_plans (
   slug TEXT UNIQUE NOT NULL,
   name TEXT NOT NULL,
   description TEXT,
-  price_monthly NUMERIC DEFAULT 0,
-  price_yearly NUMERIC DEFAULT 0,
+  price_monthly NUMERIC DEFAULT 0 CHECK (price_monthly >= 0),
+  price_yearly NUMERIC DEFAULT 0 CHECK (price_yearly >= 0),
   features JSONB DEFAULT '[]'::jsonb,
   icon TEXT,
   cta TEXT,
@@ -289,8 +377,37 @@ CREATE TABLE IF NOT EXISTS public.seller_subscriptions (
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- Trigger to prevent self-activating subscriptions
+CREATE OR REPLACE FUNCTION public.protect_seller_subscription()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NOT public.is_admin() THEN
+    IF NEW.plan <> 'free' AND (TG_OP = 'INSERT' OR NEW.status = 'ACTIVE') THEN
+      NEW.status := 'PENDING_VERIFICATION';
+      NEW.payment_status := 'PENDING_VERIFICATION';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_protect_seller_subscription ON public.seller_subscriptions;
+CREATE TRIGGER trg_protect_seller_subscription
+  BEFORE INSERT OR UPDATE ON public.seller_subscriptions
+  FOR EACH ROW EXECUTE PROCEDURE public.protect_seller_subscription();
+
+-- 14. OTP VERIFICATIONS TABLE (Private, Admin/System access only)
+CREATE TABLE IF NOT EXISTS public.otp_verifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT NOT NULL,
+  otp_code TEXT NOT NULL,
+  verified BOOLEAN DEFAULT false,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
 -- ==============================================================================
--- ROW LEVEL SECURITY (RLS) POLICIES
+-- 15. ROW LEVEL SECURITY (RLS) POLICIES
 -- ==============================================================================
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
@@ -307,62 +424,395 @@ ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.favorites ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pricing_plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.seller_subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.otp_verifications ENABLE ROW LEVEL SECURITY;
 
--- Public read access for marketplace browsing
-CREATE POLICY "Public profiles can be viewed" ON public.profiles FOR SELECT USING (true);
-CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
+-- Profiles: Private to owner and admin
+CREATE POLICY "Profiles read by owner or admin"
+ON public.profiles FOR SELECT
+USING (auth.uid() = id OR public.is_admin());
 
-CREATE POLICY "Public categories read" ON public.categories FOR SELECT USING (true);
-CREATE POLICY "Public cities read" ON public.cities FOR SELECT USING (true);
-CREATE POLICY "Public vendors read" ON public.vendors FOR SELECT USING (true);
-CREATE POLICY "Public services read" ON public.services FOR SELECT USING (true);
-CREATE POLICY "Public pricing plans read" ON public.pricing_plans FOR SELECT USING (true);
-CREATE POLICY "Public reviews read" ON public.reviews FOR SELECT USING (true);
+CREATE POLICY "Profiles update by owner or admin"
+ON public.profiles FOR UPDATE
+USING (auth.uid() = id OR public.is_admin());
 
--- Authenticated operations
-CREATE POLICY "Vendors can update own profile" ON public.vendors FOR ALL USING (auth.uid() = user_id);
-CREATE POLICY "Vendors manage services" ON public.services FOR ALL USING (
-  EXISTS (SELECT 1 FROM public.vendors WHERE vendors.id = services.vendor_id AND vendors.user_id = auth.uid())
+CREATE POLICY "Profiles insert by owner or admin"
+ON public.profiles FOR INSERT
+WITH CHECK (auth.uid() = id OR public.is_admin());
+
+-- Cities & Categories: Public read, Admin write
+CREATE POLICY "Public read cities"
+ON public.cities FOR SELECT USING (true);
+
+CREATE POLICY "Admin manage cities"
+ON public.cities FOR ALL
+USING (public.is_admin());
+
+CREATE POLICY "Public read categories"
+ON public.categories FOR SELECT USING (true);
+
+CREATE POLICY "Admin manage categories"
+ON public.categories FOR ALL
+USING (public.is_admin());
+
+-- Vendors: Public can view approved vendors. Owners view own. Admin views all.
+CREATE POLICY "Vendors viewable if approved or owner or admin"
+ON public.vendors FOR SELECT
+USING (
+  status = 'APPROVED'
+  OR auth.uid() = user_id
+  OR public.is_admin()
 );
 
--- Requests & Quotes policies
-CREATE POLICY "Public requests read" ON public.customer_requests FOR SELECT USING (true);
-CREATE POLICY "Authenticated create request" ON public.customer_requests FOR INSERT WITH CHECK (auth.uid() = customer_id);
-CREATE POLICY "Customers manage own request" ON public.customer_requests FOR UPDATE USING (auth.uid() = customer_id);
+CREATE POLICY "Vendors insert own profile"
+ON public.vendors FOR INSERT
+WITH CHECK (auth.uid() = user_id OR public.is_admin());
 
-CREATE POLICY "Quotes viewable by request customer or seller" ON public.quotes FOR SELECT USING (true);
-CREATE POLICY "Vendors create quotes" ON public.quotes FOR INSERT WITH CHECK (
-  EXISTS (SELECT 1 FROM public.vendors WHERE vendors.id = quotes.vendor_id AND vendors.user_id = auth.uid())
-);
+CREATE POLICY "Vendors update own profile"
+ON public.vendors FOR UPDATE
+USING (auth.uid() = user_id OR public.is_admin());
 
--- Bookings policies
-CREATE POLICY "Users view own bookings" ON public.bookings FOR SELECT USING (
-  auth.uid() = customer_id OR 
-  EXISTS (SELECT 1 FROM public.vendors WHERE vendors.id = bookings.vendor_id AND vendors.user_id = auth.uid())
-);
-CREATE POLICY "Customers can create booking" ON public.bookings FOR INSERT WITH CHECK (auth.uid() = customer_id);
-CREATE POLICY "Participants can update booking" ON public.bookings FOR UPDATE USING (
-  auth.uid() = customer_id OR 
-  EXISTS (SELECT 1 FROM public.vendors WHERE vendors.id = bookings.vendor_id AND vendors.user_id = auth.uid())
-);
+CREATE POLICY "Admin delete vendors"
+ON public.vendors FOR DELETE
+USING (public.is_admin());
 
--- Chat messages policies
-CREATE POLICY "Conversation participants can view" ON public.conversations FOR SELECT USING (
-  auth.uid() = customer_id OR 
-  EXISTS (SELECT 1 FROM public.vendors WHERE vendors.id = conversations.vendor_id AND vendors.user_id = auth.uid())
-);
-CREATE POLICY "Conversation create" ON public.conversations FOR INSERT WITH CHECK (true);
-
-CREATE POLICY "Messages viewable by participants" ON public.messages FOR SELECT USING (
+-- Services: Public views services of approved vendors. Vendors manage own.
+CREATE POLICY "Services viewable if vendor approved or owner or admin"
+ON public.services FOR SELECT
+USING (
   EXISTS (
-    SELECT 1 FROM public.conversations c 
+    SELECT 1 FROM public.vendors v
+    WHERE v.id = services.vendor_id AND v.status = 'APPROVED'
+  )
+  OR EXISTS (
+    SELECT 1 FROM public.vendors v
+    WHERE v.id = services.vendor_id AND v.user_id = auth.uid()
+  )
+  OR public.is_admin()
+);
+
+CREATE POLICY "Vendors insert own services"
+ON public.services FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.vendors v
+    WHERE v.id = services.vendor_id AND v.user_id = auth.uid()
+  )
+  OR public.is_admin()
+);
+
+CREATE POLICY "Vendors update own services"
+ON public.services FOR UPDATE
+USING (
+  EXISTS (
+    SELECT 1 FROM public.vendors v
+    WHERE v.id = services.vendor_id AND v.user_id = auth.uid()
+  )
+  OR public.is_admin()
+);
+
+CREATE POLICY "Vendors delete own services"
+ON public.services FOR DELETE
+USING (
+  EXISTS (
+    SELECT 1 FROM public.vendors v
+    WHERE v.id = services.vendor_id AND v.user_id = auth.uid()
+  )
+  OR public.is_admin()
+);
+
+-- Customer Requests: Protected from public enumeration
+CREATE POLICY "Customer requests access policy"
+ON public.customer_requests FOR SELECT
+USING (
+  auth.uid() = customer_id
+  OR EXISTS (
+    SELECT 1 FROM public.vendors v
+    WHERE v.user_id = auth.uid()
+      AND v.status = 'APPROVED'
+      AND (v.category = customer_requests.category OR lower(v.city) = lower(customer_requests.city))
+  )
+  OR EXISTS (
+    SELECT 1 FROM public.quotes q
+    JOIN public.vendors v ON v.id = q.vendor_id
+    WHERE q.request_id = customer_requests.id AND v.user_id = auth.uid()
+  )
+  OR public.is_admin()
+);
+
+CREATE POLICY "Customers create own requests"
+ON public.customer_requests FOR INSERT
+WITH CHECK (auth.uid() = customer_id);
+
+CREATE POLICY "Customers update own open requests"
+ON public.customer_requests FOR UPDATE
+USING (
+  (auth.uid() = customer_id AND status = 'OPEN')
+  OR public.is_admin()
+);
+
+CREATE POLICY "Customers delete own open requests"
+ON public.customer_requests FOR DELETE
+USING (
+  (auth.uid() = customer_id AND status IN ('OPEN', 'CANCELLED'))
+  OR public.is_admin()
+);
+
+-- Quotes: Private between customer, quoting vendor, and admin
+CREATE POLICY "Quotes private view"
+ON public.quotes FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM public.customer_requests cr
+    WHERE cr.id = quotes.request_id AND cr.customer_id = auth.uid()
+  )
+  OR EXISTS (
+    SELECT 1 FROM public.vendors v
+    WHERE v.id = quotes.vendor_id AND v.user_id = auth.uid()
+  )
+  OR public.is_admin()
+);
+
+CREATE POLICY "Approved vendors create quotes"
+ON public.quotes FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.vendors v
+    WHERE v.id = quotes.vendor_id AND v.user_id = auth.uid() AND v.status = 'APPROVED'
+  )
+  OR public.is_admin()
+);
+
+CREATE POLICY "Quotes update policy"
+ON public.quotes FOR UPDATE
+USING (
+  (EXISTS (
+    SELECT 1 FROM public.vendors v
+    WHERE v.id = quotes.vendor_id AND v.user_id = auth.uid()
+  ) AND status = 'PENDING')
+  OR EXISTS (
+    SELECT 1 FROM public.customer_requests cr
+    WHERE cr.id = quotes.request_id AND cr.customer_id = auth.uid()
+  )
+  OR public.is_admin()
+);
+
+CREATE POLICY "Admin delete quotes"
+ON public.quotes FOR DELETE
+USING (public.is_admin());
+
+-- Bookings: Private between customer, assigned vendor, and admin
+CREATE POLICY "Bookings viewable by participants or admin"
+ON public.bookings FOR SELECT
+USING (
+  auth.uid() = customer_id
+  OR EXISTS (
+    SELECT 1 FROM public.vendors v
+    WHERE v.id = bookings.vendor_id AND v.user_id = auth.uid()
+  )
+  OR public.is_admin()
+);
+
+CREATE POLICY "Customers create bookings"
+ON public.bookings FOR INSERT
+WITH CHECK (auth.uid() = customer_id OR public.is_admin());
+
+CREATE POLICY "Bookings update policy"
+ON public.bookings FOR UPDATE
+USING (
+  auth.uid() = customer_id
+  OR EXISTS (
+    SELECT 1 FROM public.vendors v
+    WHERE v.id = bookings.vendor_id AND v.user_id = auth.uid()
+  )
+  OR public.is_admin()
+);
+
+CREATE POLICY "Admin delete bookings"
+ON public.bookings FOR DELETE
+USING (public.is_admin());
+
+-- Chat Conversations & Messages: Private to participants
+CREATE POLICY "Conversations viewable by participants or admin"
+ON public.conversations FOR SELECT
+USING (
+  auth.uid() = customer_id
+  OR EXISTS (
+    SELECT 1 FROM public.vendors v
+    WHERE v.id = conversations.vendor_id AND v.user_id = auth.uid()
+  )
+  OR public.is_admin()
+);
+
+CREATE POLICY "Conversations insert by participants"
+ON public.conversations FOR INSERT
+WITH CHECK (
+  auth.uid() = customer_id
+  OR EXISTS (
+    SELECT 1 FROM public.vendors v
+    WHERE v.id = conversations.vendor_id AND v.user_id = auth.uid()
+  )
+  OR public.is_admin()
+);
+
+CREATE POLICY "Conversations update by participants"
+ON public.conversations FOR UPDATE
+USING (
+  auth.uid() = customer_id
+  OR EXISTS (
+    SELECT 1 FROM public.vendors v
+    WHERE v.id = conversations.vendor_id AND v.user_id = auth.uid()
+  )
+  OR public.is_admin()
+);
+
+CREATE POLICY "Messages viewable by participants or admin"
+ON public.messages FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM public.conversations c
     WHERE c.id = messages.conversation_id AND (
-      c.customer_id = auth.uid() OR 
-      EXISTS (SELECT 1 FROM public.vendors v WHERE v.id = c.vendor_id AND v.user_id = auth.uid())
+      c.customer_id = auth.uid()
+      OR EXISTS (
+        SELECT 1 FROM public.vendors v
+        WHERE v.id = c.vendor_id AND v.user_id = auth.uid()
+      )
+    )
+  )
+  OR public.is_admin()
+);
+
+CREATE POLICY "Messages insert by participant"
+ON public.messages FOR INSERT
+WITH CHECK (
+  auth.uid() = sender_id
+  AND EXISTS (
+    SELECT 1 FROM public.conversations c
+    WHERE c.id = messages.conversation_id AND (
+      c.customer_id = auth.uid()
+      OR EXISTS (
+        SELECT 1 FROM public.vendors v
+        WHERE v.id = c.vendor_id AND v.user_id = auth.uid()
+      )
     )
   )
 );
-CREATE POLICY "Messages insert" ON public.messages FOR INSERT WITH CHECK (auth.uid() = sender_id);
+
+CREATE POLICY "Messages update by recipient or admin"
+ON public.messages FOR UPDATE
+USING (
+  EXISTS (
+    SELECT 1 FROM public.conversations c
+    WHERE c.id = messages.conversation_id AND (
+      c.customer_id = auth.uid()
+      OR EXISTS (
+        SELECT 1 FROM public.vendors v
+        WHERE v.id = c.vendor_id AND v.user_id = auth.uid()
+      )
+    )
+  )
+  OR public.is_admin()
+);
+
+-- Reviews
+CREATE POLICY "Reviews view policy"
+ON public.reviews FOR SELECT
+USING (
+  status = 'PUBLISHED'
+  OR auth.uid() = customer_id
+  OR EXISTS (
+    SELECT 1 FROM public.vendors v
+    WHERE v.id = reviews.vendor_id AND v.user_id = auth.uid()
+  )
+  OR public.is_admin()
+);
+
+CREATE POLICY "Customers create reviews"
+ON public.reviews FOR INSERT
+WITH CHECK (
+  auth.uid() = customer_id
+  AND NOT EXISTS (
+    SELECT 1 FROM public.vendors v
+    WHERE v.id = reviews.vendor_id AND v.user_id = auth.uid()
+  )
+);
+
+CREATE POLICY "Vendors reply or admin update reviews"
+ON public.reviews FOR UPDATE
+USING (
+  EXISTS (
+    SELECT 1 FROM public.vendors v
+    WHERE v.id = reviews.vendor_id AND v.user_id = auth.uid()
+  )
+  OR public.is_admin()
+);
+
+CREATE POLICY "Admin delete reviews"
+ON public.reviews FOR DELETE
+USING (public.is_admin());
+
+-- Pricing Plans
+CREATE POLICY "Public read pricing plans"
+ON public.pricing_plans FOR SELECT USING (true);
+
+CREATE POLICY "Admin manage pricing plans"
+ON public.pricing_plans FOR ALL
+USING (public.is_admin());
+
+-- Seller Subscriptions
+CREATE POLICY "Subscriptions viewable by vendor owner or admin"
+ON public.seller_subscriptions FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM public.vendors v
+    WHERE v.id = seller_subscriptions.vendor_id AND v.user_id = auth.uid()
+  )
+  OR public.is_admin()
+);
+
+CREATE POLICY "Vendors request subscription"
+ON public.seller_subscriptions FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.vendors v
+    WHERE v.id = seller_subscriptions.vendor_id AND v.user_id = auth.uid()
+  )
+  OR public.is_admin()
+);
+
+CREATE POLICY "Admin manage subscriptions"
+ON public.seller_subscriptions FOR UPDATE
+USING (public.is_admin());
+
+CREATE POLICY "Admin delete subscriptions"
+ON public.seller_subscriptions FOR DELETE
+USING (public.is_admin());
+
+-- Notifications
+CREATE POLICY "Users read own notifications"
+ON public.notifications FOR SELECT
+USING (auth.uid() = user_id);
+
+CREATE POLICY "Users update own notifications"
+ON public.notifications FOR UPDATE
+USING (auth.uid() = user_id);
+
+CREATE POLICY "Notifications insert policy"
+ON public.notifications FOR INSERT
+WITH CHECK (auth.uid() = user_id OR public.is_admin());
+
+CREATE POLICY "Users delete own notifications"
+ON public.notifications FOR DELETE
+USING (auth.uid() = user_id OR public.is_admin());
+
+-- Favorites
+CREATE POLICY "Customers manage own favorites"
+ON public.favorites FOR ALL
+USING (auth.uid() = customer_id);
+
+-- OTP Verifications (Strictly private)
+CREATE POLICY "OTP admin only select"
+ON public.otp_verifications FOR SELECT
+USING (public.is_admin());
 
 -- Enable Realtime
 ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
@@ -371,33 +821,33 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.bookings;
 
 -- ==============================================================================
--- INITIAL SEED DATA (Categories, Cities, Pricing Plans)
+-- 16. INITIAL SEED DATA (Categories, Cities, Pricing Plans)
 -- ==============================================================================
 
 -- Seed Cities
 INSERT INTO public.cities (name, province, popular_areas, vendor_count, featured) VALUES
-('Lahore', 'Punjab', '["Gulberg", "DHA", "Model Town", "Bahria Town", "Johar Town", "Cantt"]'::jsonb, 12, true),
-('Karachi', 'Sindh', '["Clifton", "DHA", "Gulshan-e-Iqbal", "North Nazimabad", "PECHS"]'::jsonb, 8, true),
-('Islamabad', 'Federal', '["F-6", "F-7", "F-8", "F-10", "F-11", "E-7", "Bahria Town", "DHA-2"]'::jsonb, 6, true),
-('Rawalpindi', 'Punjab', '["Saddar", "Bahria Town", "Satellite Town", "Westridge", "Chaklala"]'::jsonb, 3, false),
-('Faisalabad', 'Punjab', '["D-Ground", "Madina Town", "Peoples Colony", "Kohinoor City"]'::jsonb, 2, false),
-('Peshawar', 'KPK', '["Hayatabad", "University Town", "Cantt"]'::jsonb, 2, false),
-('Sydney', 'New South Wales', '["Surry Hills", "Parramatta", "Bondi", "Chatswood", "Liverpool"]'::jsonb, 5, true),
-('Melbourne', 'Victoria', '["Richmond", "St Kilda", "Footscray", "Carlton", "Sunbury"]'::jsonb, 4, true),
-('Brisbane', 'Queensland', '["West End", "New Farm", "Chermside", "Kelvin Grove"]'::jsonb, 2, true),
-('Perth', 'Western Australia', '["Subiaco", "Fremantle", "Canning Vale", "Joondalup"]'::jsonb, 2, true),
-('Adelaide', 'South Australia', '["Glenelg", "Norwood", "Prospect", "Mile End"]'::jsonb, 1, false),
-('Canberra', 'Australian Capital Territory', '["Civic", "Acton", "Kingston", "Belconnen"]'::jsonb, 1, false)
+('Lahore', 'Punjab', '["Gulberg", "DHA", "Model Town", "Bahria Town", "Johar Town", "Cantt"]'::jsonb, 0, true),
+('Karachi', 'Sindh', '["Clifton", "DHA", "Gulshan-e-Iqbal", "North Nazimabad", "PECHS"]'::jsonb, 0, true),
+('Islamabad', 'Federal', '["F-6", "F-7", "F-8", "F-10", "F-11", "E-7", "Bahria Town", "DHA-2"]'::jsonb, 0, true),
+('Rawalpindi', 'Punjab', '["Saddar", "Bahria Town", "Satellite Town", "Westridge", "Chaklala"]'::jsonb, 0, false),
+('Faisalabad', 'Punjab', '["D-Ground", "Madina Town", "Peoples Colony", "Kohinoor City"]'::jsonb, 0, false),
+('Peshawar', 'KPK', '["Hayatabad", "University Town", "Cantt"]'::jsonb, 0, false),
+('Sydney', 'New South Wales', '["Surry Hills", "Parramatta", "Bondi", "Chatswood", "Liverpool"]'::jsonb, 0, true),
+('Melbourne', 'Victoria', '["Richmond", "St Kilda", "Footscray", "Carlton", "Sunbury"]'::jsonb, 0, true),
+('Brisbane', 'Queensland', '["West End", "New Farm", "Chermside", "Kelvin Grove"]'::jsonb, 0, true),
+('Perth', 'Western Australia', '["Subiaco", "Fremantle", "Canning Vale", "Joondalup"]'::jsonb, 0, true),
+('Adelaide', 'South Australia', '["Glenelg", "Norwood", "Prospect", "Mile End"]'::jsonb, 0, false),
+('Canberra', 'Australian Capital Territory', '["Civic", "Acton", "Kingston", "Belconnen"]'::jsonb, 0, false)
 ON CONFLICT (name) DO NOTHING;
 
 -- Seed Categories
 INSERT INTO public.categories (slug, name, description, icon_name, image, vendor_count, subcategories, featured) VALUES
-('cakes-baking', 'Custom Cakes & Baking', 'Custom fondant cakes, cupcakes, bento cakes, brownies & artisanal sourdough breads.', 'Cake', 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=600&q=80', 14, '["Custom Fondant Cakes", "Bento & Korean Cakes", "Artisanal Brownies & Cookies", "Macarons & Gourmet Desserts", "Gluten-Free & Diet Baking"]'::jsonb, true),
-('catering-food', 'Home Catering & Meals', 'Authentic home-cooked Daawat menus, daily meal subscriptions, Hi-Tea platters & finger foods.', 'Utensils', 'https://images.unsplash.com/photo-1555244162-803834f70033?auto=format&fit=crop&w=600&q=80', 11, '["Daawat Catering (Biryani, Qorma)", "Weekly / Monthly Lunch Subscriptions", "Hi-Tea Platters & Savory Boxes", "Artisanal Desi Ghee & Pickles", "Frozen Appetizers (Samosas, Rolls)"]'::jsonb, true),
-('tailoring-fashion', 'Tailoring & Alterations', 'Stitching, designer copy tailoring, urgent alterations, hand embroidery & custom bridal wear.', 'Scissors', 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?auto=format&fit=crop&w=600&q=80', 9, '["Ladies Suit Stitching (Casual & Semi-Formal)", "Designer Replica & Lawn Stitching", "Bridal & Heavy Embroidery (Zardozi, Gota)", "Urgent Alterations & Fitting", "Kids Traditional Outfits"]'::jsonb, true),
-('henna-mehendi', 'Henna & Bridal Mehndi', 'Traditional Rajasthani, Arabic, intricate bridal mehndi, minimalist floral patterns & organic cone supplies.', 'Sparkles', 'https://images.unsplash.com/photo-1563178406-4cdc2923acbc?auto=format&fit=crop&w=600&q=80', 8, '["Bridal Intricate Mehndi", "Guest / Party Mehndi Packages", "Arabic Floral & Minimalist", "White Henna & Jagua Gel", "Fresh Organic Henna Cones Delivery"]'::jsonb, true),
-('handmade-gifts', 'Handmade Crafts & Gifts', 'Resin art, crochet plushies, custom calligraphy, scented soy candles & curated gift hampers.', 'Gift', 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38?auto=format&fit=crop&w=600&q=80', 7, '["Hand-poured Scented Candles", "Resin Art (Coasters, Quran Stands)", "Crochet Accessories & Toys", "Arabic / Urdu Calligraphy Frames", "Custom Nikah & Bachelorette Hampers"]'::jsonb, true),
-('beauty-hair', 'Home Salon & Beauty', 'Bridal makeup, hair styling, facials, mani-pedi & relaxing organic salon services at home.', 'Flower2', 'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?auto=format&fit=crop&w=600&q=80', 6, '["Bridal & Party Hair/Makeup", "Hydra & Organic Facials", "Waxing, Threading & Polishing", "Manicure & Pedicure Services", "Keratin & Hair Protein Treatments"]'::jsonb, false)
+('cakes-baking', 'Custom Cakes & Baking', 'Custom fondant cakes, cupcakes, bento cakes, brownies & artisanal sourdough breads.', 'Cake', 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=600&q=80', 0, '["Custom Fondant Cakes", "Bento & Korean Cakes", "Artisanal Brownies & Cookies", "Macarons & Gourmet Desserts", "Gluten-Free & Diet Baking"]'::jsonb, true),
+('catering-food', 'Home Catering & Meals', 'Authentic home-cooked Daawat menus, daily meal subscriptions, Hi-Tea platters & finger foods.', 'Utensils', 'https://images.unsplash.com/photo-1555244162-803834f70033?auto=format&fit=crop&w=600&q=80', 0, '["Daawat Catering (Biryani, Qorma)", "Weekly / Monthly Lunch Subscriptions", "Hi-Tea Platters & Savory Boxes", "Artisanal Desi Ghee & Pickles", "Frozen Appetizers (Samosas, Rolls)"]'::jsonb, true),
+('tailoring-fashion', 'Tailoring & Alterations', 'Stitching, designer copy tailoring, urgent alterations, hand embroidery & custom bridal wear.', 'Scissors', 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?auto=format&fit=crop&w=600&q=80', 0, '["Ladies Suit Stitching (Casual & Semi-Formal)", "Designer Replica & Lawn Stitching", "Bridal & Heavy Embroidery (Zardozi, Gota)", "Urgent Alterations & Fitting", "Kids Traditional Outfits"]'::jsonb, true),
+('henna-mehendi', 'Henna & Bridal Mehndi', 'Traditional Rajasthani, Arabic, intricate bridal mehndi, minimalist floral patterns & organic cone supplies.', 'Sparkles', 'https://images.unsplash.com/photo-1563178406-4cdc2923acbc?auto=format&fit=crop&w=600&q=80', 0, '["Bridal Intricate Mehndi", "Guest / Party Mehndi Packages", "Arabic Floral & Minimalist", "White Henna & Jagua Gel", "Fresh Organic Henna Cones Delivery"]'::jsonb, true),
+('handmade-gifts', 'Handmade Crafts & Gifts', 'Resin art, crochet plushies, custom calligraphy, scented soy candles & curated gift hampers.', 'Gift', 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38?auto=format&fit=crop&w=600&q=80', 0, '["Hand-poured Scented Candles", "Resin Art (Coasters, Quran Stands)", "Crochet Accessories & Toys", "Arabic / Urdu Calligraphy Frames", "Custom Nikah & Bachelorette Hampers"]'::jsonb, true),
+('beauty-hair', 'Home Salon & Beauty', 'Bridal makeup, hair styling, facials, mani-pedi & relaxing organic salon services at home.', 'Flower2', 'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?auto=format&fit=crop&w=600&q=80', 0, '["Bridal & Party Hair/Makeup", "Hydra & Organic Facials", "Waxing, Threading & Polishing", "Manicure & Pedicure Services", "Keratin & Hair Protein Treatments"]'::jsonb, false)
 ON CONFLICT (slug) DO NOTHING;
 
 -- Seed Subscription Pricing Plans
@@ -407,49 +857,47 @@ INSERT INTO public.pricing_plans (slug, name, description, price_monthly, price_
 ('featured', 'Featured Partner', 'Maximum visibility across homepage, category banners & priority leads.', 5999, 59990, '["Homepage Hero Showcase", "Top 3 Search Guarantee", "Dedicated Support Manager", "Social Media Spotlight Promo", "Zero Platform Commission", "0% Lead Service Fees"]'::jsonb, 'Crown', 'Become Featured', false, 'Best Value', true)
 ON CONFLICT (slug) DO NOTHING;
 
--- 11. OTP VERIFICATIONS TABLE (For storing 4-digit OTP audit logs)
-CREATE TABLE IF NOT EXISTS public.otp_verifications (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email TEXT NOT NULL,
-  otp_code TEXT NOT NULL,
-  verified BOOLEAN DEFAULT false,
-  expires_at TIMESTAMPTZ NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+-- ==============================================================================
+-- 17. STORAGE BUCKET & STORAGE RLS POLICIES
+-- ==============================================================================
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'homebiz-media',
+  'homebiz-media',
+  true,
+  5242880,
+  ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+)
+ON CONFLICT (id) DO UPDATE SET
+  public = true,
+  file_size_limit = 5242880,
+  allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+-- Storage RLS: Public read
+DROP POLICY IF EXISTS "Public read homebiz-media" ON storage.objects;
+CREATE POLICY "Public read homebiz-media"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'homebiz-media');
+
+-- Storage RLS: Authenticated upload only to permitted image folders
+DROP POLICY IF EXISTS "Authenticated users upload homebiz-media" ON storage.objects;
+CREATE POLICY "Authenticated users upload homebiz-media"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (
+  bucket_id = 'homebiz-media'
+  AND (storage.foldername(name))[1] IN ('avatars', 'covers', 'gallery', 'services', 'requests')
 );
 
--- RLS Policies for OTP verifications
-ALTER TABLE public.otp_verifications ENABLE ROW LEVEL SECURITY;
+-- Storage RLS: Owner or Admin update/delete
+DROP POLICY IF EXISTS "Owner or admin update homebiz-media" ON storage.objects;
+CREATE POLICY "Owner or admin update homebiz-media"
+ON storage.objects FOR UPDATE
+TO authenticated
+USING (bucket_id = 'homebiz-media' AND (auth.uid() = owner OR public.is_admin()));
 
-DROP POLICY IF EXISTS "Allow anon insert to otp_verifications" ON public.otp_verifications;
-CREATE POLICY "Allow anon insert to otp_verifications" ON public.otp_verifications FOR INSERT WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Allow anon select on otp_verifications" ON public.otp_verifications;
-CREATE POLICY "Allow anon select on otp_verifications" ON public.otp_verifications FOR SELECT USING (true);
-
-DROP POLICY IF EXISTS "Allow anon update on otp_verifications" ON public.otp_verifications;
-CREATE POLICY "Allow anon update on otp_verifications" ON public.otp_verifications FOR UPDATE USING (true);
-
--- 12. PLATFORM SUPER ADMINISTRATOR SETUP
--- Note: Create admin in Supabase Dashboard -> Authentication -> Users with:
--- Email: admin@homebiz.pk
--- Password: Admin@123
--- Then execute below to guarantee ADMIN privileges in public.profiles:
--- UPDATE public.profiles SET role = 'ADMIN' WHERE email = 'admin@homebiz.pk';
-
--- 13. SECURE PASSWORD RESET FUNCTION (RPC)
--- Allows updating encrypted password in auth.users after email OTP verification
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
-CREATE OR REPLACE FUNCTION public.reset_user_password(user_email TEXT, new_password TEXT)
-RETURNS BOOLEAN AS $$
-BEGIN
-  -- Update auth.users encrypted password with bcrypt
-  UPDATE auth.users
-  SET encrypted_password = crypt(new_password, gen_salt('bf')),
-      updated_at = now()
-  WHERE lower(email) = lower(user_email);
-
-  RETURN FOUND;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
+DROP POLICY IF EXISTS "Owner or admin delete homebiz-media" ON storage.objects;
+CREATE POLICY "Owner or admin delete homebiz-media"
+ON storage.objects FOR DELETE
+TO authenticated
+USING (bucket_id = 'homebiz-media' AND (auth.uid() = owner OR public.is_admin()));

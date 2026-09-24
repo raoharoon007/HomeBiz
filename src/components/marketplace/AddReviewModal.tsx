@@ -31,6 +31,90 @@ export function AddReviewModal({
 
   if (!isOpen) return null;
 
+  if (!user) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+        <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#e3e2e1] text-center space-y-4 relative">
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 p-2 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-full"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <div className="w-12 h-12 rounded-full bg-[#FFF1E7] text-[#735c00] mx-auto flex items-center justify-center font-bold text-lg">
+            🔒
+          </div>
+          <h3 className="text-lg font-bold text-[#1a1c1c]">Sign In Required</h3>
+          <p className="text-xs text-[#665d55]">Only verified customers can leave reviews. Please sign in to submit your feedback.</p>
+          <a
+            href="/auth/login"
+            className="inline-block px-6 py-2.5 rounded-full bg-[#003527] text-white text-xs font-bold shadow-xs hover:bg-[#064e3b]"
+          >
+            Sign In
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  // Prevent sellers from reviewing their own business
+  if (user.sellerProfileId && user.sellerProfileId === vendorId) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+        <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#e3e2e1] text-center space-y-4 relative">
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 p-2 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-full"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <div className="w-12 h-12 rounded-full bg-red-100 text-[#ba1a1a] mx-auto flex items-center justify-center font-bold text-lg">
+            ⚠️
+          </div>
+          <h3 className="text-lg font-bold text-[#1a1c1c]">Self-Review Not Permitted</h3>
+          <p className="text-xs text-[#665d55]">Sellers cannot submit customer reviews for their own storefront.</p>
+          <button
+            onClick={onClose}
+            className="px-6 py-2 rounded-full bg-[#003527] text-white text-xs font-bold"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const existingReviews = Storage.getReviews(vendorId);
+  const alreadyReviewedBooking = Boolean(
+    bookingId && existingReviews.some((r) => r.customerId === user.id && r.bookingId === bookingId)
+  );
+
+  if (alreadyReviewedBooking) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+        <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#e3e2e1] text-center space-y-4 relative">
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 p-2 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-full"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <div className="w-12 h-12 rounded-full bg-[#b0f0d6] text-[#003527] mx-auto flex items-center justify-center font-bold text-lg">
+            ✓
+          </div>
+          <h3 className="text-lg font-bold text-[#1a1c1c]">Review Already Submitted</h3>
+          <p className="text-xs text-[#665d55]">You have already submitted a verified review for this completed order.</p>
+          <button
+            onClick={onClose}
+            className="px-6 py-2 rounded-full bg-[#003527] text-white text-xs font-bold"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -49,10 +133,10 @@ export function AddReviewModal({
     Storage.addReview({
       vendorId,
       bookingId,
-      customerId: user?.id || 'guest-cust',
-      customerName: user?.name || 'Customer',
-      customerAvatar: user?.avatar,
-      rating,
+      customerId: user.id,
+      customerName: user.name || 'Verified Customer',
+      customerAvatar: user.avatar,
+      rating: Math.min(5, Math.max(1, rating)),
       comment: comment.trim(),
     });
 

@@ -20,6 +20,7 @@ import confetti from 'canvas-confetti';
 import { useAuth } from '../lib/authContext';
 import { sendSellerVerificationApprovalEmail } from '../lib/emailService';
 import { isAustralianLocation } from '../lib/countryUtils';
+import { AdminPricingManager } from './AdminPricingManager';
 
 export function AdminDashboard() {
   useStorageSubscription();
@@ -47,6 +48,8 @@ export function AdminDashboard() {
 
   let activeTab = 'overview';
   if (pathname.includes('/vendors')) activeTab = 'vendors';
+  else if (pathname.includes('/subscriptions')) activeTab = 'subscriptions';
+  else if (pathname.includes('/pricing')) activeTab = 'pricing';
   else if (pathname.includes('/categories')) activeTab = 'categories';
   else if (pathname.includes('/cities')) activeTab = 'cities';
   else if (pathname.includes('/bookings')) activeTab = 'bookings';
@@ -59,6 +62,7 @@ export function AdminDashboard() {
   const categories = Storage.getCategories();
   const cities = Storage.getCities();
   const requests = Storage.getRequests();
+  const subscriptions = Storage.getSubscriptions();
 
   const totalGMV = bookings.reduce((sum, b) => sum + b.total, 0);
   const platformRevenue = Math.round(totalGMV * 0.05);
@@ -66,6 +70,10 @@ export function AdminDashboard() {
   const pendingVendors = vendors.filter((v) => v.verificationStatus === 'PENDING');
   const verifiedVendors = vendors.filter((v) => v.verificationStatus === 'VERIFIED');
   const rejectedVendors = vendors.filter((v) => v.verificationStatus === 'REJECTED');
+
+  const pendingSubscriptions = subscriptions.filter(
+    (s) => s.status === 'PENDING_VERIFICATION' || s.paymentStatus === 'PENDING_VERIFICATION'
+  );
 
   const filteredVendors = vendors.filter((v) => {
     if (vendorFilter === 'PENDING') return v.verificationStatus === 'PENDING';
@@ -77,6 +85,8 @@ export function AdminDashboard() {
   const navTabs = [
     { id: 'overview', label: 'Platform KPIs', path: '/admin/dashboard/overview', icon: TrendingUp },
     { id: 'vendors', label: 'Vendor Verifications', path: '/admin/dashboard/vendors', icon: Store, badge: pendingVendors.length },
+    { id: 'subscriptions', label: 'Partner Subscriptions', path: '/admin/dashboard/subscriptions', icon: DollarSign, badge: pendingSubscriptions.length },
+    { id: 'pricing', label: 'Pricing Plans', path: '/admin/dashboard/pricing', icon: Award },
     { id: 'categories', label: 'Categories', path: '/admin/dashboard/categories', icon: Layers, badge: categories.length },
     { id: 'cities', label: 'Active Cities', path: '/admin/dashboard/cities', icon: MapPin, badge: cities.length },
     { id: 'bookings', label: 'All Platform Orders', path: '/admin/dashboard/bookings', icon: Calendar, badge: bookings.length },
@@ -602,6 +612,133 @@ export function AdminDashboard() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* TAB 6: PARTNER SUBSCRIPTIONS */}
+          {activeTab === 'subscriptions' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-base font-bold text-[#1a1c1c]">
+                    Seller Subscription Upgrades ({subscriptions.length})
+                  </h2>
+                  <p className="text-xs text-[#665d55]">
+                    Verify seller payment transaction IDs to activate Pro & Featured partner badges
+                  </p>
+                </div>
+                {pendingSubscriptions.length > 0 && (
+                  <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold border border-amber-300">
+                    {pendingSubscriptions.length} Pending Verification
+                  </span>
+                )}
+              </div>
+
+              {subscriptions.length === 0 ? (
+                <div className="bg-white rounded-3xl p-8 border border-[#e3e2e1] text-center text-xs text-[#665d55]">
+                  No partner subscription requests found.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {subscriptions.map((sub) => {
+                    const subVendor = Storage.getVendorById(sub.vendorId);
+                    const isPending = sub.status === 'PENDING_VERIFICATION' || sub.paymentStatus === 'PENDING_VERIFICATION';
+                    const isActive = sub.status === 'ACTIVE';
+
+                    return (
+                      <div
+                        key={sub.id}
+                        className="bg-white rounded-3xl p-5 border border-[#e3e2e1] shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-[#1a1c1c] text-sm">
+                              {subVendor?.businessName || `Vendor (${sub.vendorId.slice(0, 8)})`}
+                            </span>
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] uppercase ${
+                                sub.plan === 'featured'
+                                  ? 'bg-[#FFF1E7] text-[#cca72f] border border-[#cca72f]/40'
+                                  : 'bg-[#b0f0d6]/40 text-[#003527] border border-[#95d3ba]/40'
+                              }`}
+                            >
+                              {sub.plan} Plan ({sub.billingPeriod})
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                                isActive
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : isPending
+                                  ? 'bg-amber-100 text-amber-800 animate-pulse'
+                                  : 'bg-stone-100 text-stone-600'
+                              }`}
+                            >
+                              {sub.status}
+                            </span>
+                          </div>
+
+                          <div className="text-[#665d55] flex flex-wrap items-center gap-3 text-[11px]">
+                            <span>Amount: <strong>Rs. {sub.priceAtPurchase.toLocaleString()}</strong></span>
+                            <span>• Method: <strong>{sub.paymentMethod || 'Manual'}</strong></span>
+                            {sub.transactionId && (
+                              <span>• TID/Ref: <strong className="font-mono text-emerald-900 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">{sub.transactionId}</strong></span>
+                            )}
+                            {sub.renewalDate && (
+                              <span>• Renews: {new Date(sub.renewalDate).toLocaleDateString()}</span>
+                            )}
+                          </div>
+
+                          {sub.providerReference && (
+                            <p className="text-[10px] text-stone-500 font-mono">
+                              Note: {sub.providerReference}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 self-end sm:self-center">
+                          {isPending && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  Storage.verifySubscription(sub.id, 'APPROVE');
+                                  confetti({ particleCount: 60, spread: 60 });
+                                }}
+                                className="px-3 py-1.5 rounded-full bg-[#003527] text-white font-bold text-xs hover:bg-[#064e3b] transition-colors cursor-pointer"
+                              >
+                                ✓ Verify & Activate
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const reason = window.prompt('Reason for rejection / refund note:');
+                                  Storage.verifySubscription(sub.id, 'REJECT', reason || undefined);
+                                }}
+                                className="px-3 py-1.5 rounded-full border border-red-300 text-red-600 hover:bg-red-50 font-bold text-xs transition-colors cursor-pointer"
+                              >
+                                ✗ Reject
+                              </button>
+                            </>
+                          )}
+                          {isActive && (
+                            <span className="text-emerald-700 font-bold text-xs flex items-center gap-1">
+                              <CheckCircle className="w-4 h-4 text-emerald-600" />
+                              Active Verified
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 7: PRICING PLANS MANAGER */}
+          {activeTab === 'pricing' && (
+            <div>
+              <AdminPricingManager />
             </div>
           )}
         </div>

@@ -25,6 +25,7 @@ import {
   UploadCloud,
   Loader,
   AlertCircle,
+  ShieldCheck,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { uploadImageToStorage } from '../lib/supabaseStorage';
@@ -917,6 +918,20 @@ export function SellerDashboard() {
                   </div>
                 )}
               </div>
+
+              {currentSubscription?.status === 'PENDING_VERIFICATION' && (
+                <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl flex items-start gap-3">
+                  <ShieldCheck className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <h4 className="text-xs font-bold text-amber-900">
+                      Upgrade Payment Under Review (#{currentSubscription.transactionId || 'Ref Submitted'})
+                    </h4>
+                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                      Your payment request for the <strong>{currentSubscription.plan.toUpperCase()}</strong> tier is being verified by platform administration. Once approved, your Pro Partner badge and visibility privileges will activate immediately.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Billing Information */}
               <div className="space-y-4 pt-4 border-t border-[#f4f3f2]">

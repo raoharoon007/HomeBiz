@@ -213,7 +213,6 @@ export const SEED_USERS: User[] = [
     id: 'user-admin',
     name: 'Admin HomeBiz',
     email: 'admin@homebiz.pk',
-    password: 'Admin@123',
     phone: '+92 300 0000000',
     role: 'ADMIN',
     avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=200&q=80',

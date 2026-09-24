@@ -37,12 +37,13 @@ function AppContent() {
   useEffect(() => {
     async function syncInitialData() {
       try {
-        const [categories, cities, pricingPlans, vendors, liveBookings] = await Promise.all([
+        const [categories, cities, pricingPlans, vendors, remoteRequests, remoteSubs] = await Promise.all([
           SupabaseDb.getCategories(),
           SupabaseDb.getCities(),
           SupabaseDb.getPricingPlans(),
           SupabaseDb.getVendors(),
-          SupabaseDb.getBookings(),
+          SupabaseDb.getCustomerRequests(),
+          SupabaseDb.getSubscriptions(),
         ]);
 
         if (categories.length > 0) {
@@ -61,12 +62,19 @@ function AppContent() {
           vendors.forEach((v) => mergedMap.set(v.slug || v.id, v));
           window.localStorage.setItem('hb_vendors_v1', JSON.stringify(Array.from(mergedMap.values())));
         }
-        if (liveBookings && liveBookings.length > 0) {
-          const currentBookings = Storage.getBookings();
-          const bMap = new Map<string, any>();
-          currentBookings.forEach((b) => bMap.set(b.bookingNumber, b));
-          liveBookings.forEach((b) => bMap.set(b.bookingNumber, b));
-          window.localStorage.setItem('hb_bookings_v1', JSON.stringify(Array.from(bMap.values())));
+        if (remoteRequests.length > 0) {
+          const currentRequests = Storage.getCustomerRequests();
+          const reqMap = new Map<string, any>();
+          currentRequests.forEach((r) => reqMap.set(r.id || r.requestNumber, r));
+          remoteRequests.forEach((r) => reqMap.set(r.id || r.requestNumber, r));
+          window.localStorage.setItem('hb_requests_v1', JSON.stringify(Array.from(reqMap.values())));
+        }
+        if (remoteSubs.length > 0) {
+          const currentSubs = Storage.getSubscriptions();
+          const subMap = new Map<string, any>();
+          currentSubs.forEach((s) => subMap.set(s.id, s));
+          remoteSubs.forEach((s) => subMap.set(s.id, s));
+          window.localStorage.setItem('hb_subscriptions_v1', JSON.stringify(Array.from(subMap.values())));
         }
         window.dispatchEvent(new CustomEvent('hb_storage_update', { detail: { key: 'all' } }));
       } catch (e) {

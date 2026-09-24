@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Storage } from '../lib/storage';
+import { SupabaseDb } from '../lib/supabaseDb';
 import { useAuth } from '../lib/authContext';
 import { PricingPlan, SellerSubscription } from '../types';
-import { Edit, Save, X, Plus, Users, DollarSign, TrendingUp } from 'lucide-react';
+import { Edit, Save, X, Plus, Users, DollarSign, TrendingUp, Loader2 } from 'lucide-react';
+import { Toast } from '../components/common/Toast';
 
 export function AdminPricingManager() {
     const { user } = useAuth();
@@ -11,15 +13,28 @@ export function AdminPricingManager() {
     const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
     const [editedPlan, setEditedPlan] = useState<Partial<PricingPlan>>({});
     const [activeTab, setActiveTab] = useState<'plans' | 'subscribers' | 'revenue'>('plans');
+    const [isSaving, setIsSaving] = useState(false);
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' } | null>(null);
 
     useEffect(() => {
         if (user?.role !== 'ADMIN') {
             return;
         }
-        const fetchedPlans = Storage.getPricingPlans();
+        // First load from local cache
+        const cachedPlans = Storage.getPricingPlans();
         const fetchedSubs = Storage.getSubscriptions();
-        setPlans(fetchedPlans);
+        setPlans(cachedPlans);
         setSubscriptions(fetchedSubs);
+
+        // Fetch live from Supabase database to ensure exact sync
+        SupabaseDb.getPricingPlans().then((livePlans) => {
+            if (livePlans && livePlans.length > 0) {
+                setPlans(livePlans);
+                Storage.setPricingPlans(livePlans);
+            }
+        }).catch((err) => {
+            console.warn('Error fetching live pricing plans:', err);
+        });
     }, [user]);
 
     const handleEditPlan = (plan: PricingPlan) => {
@@ -27,16 +42,74 @@ export function AdminPricingManager() {
         setEditedPlan({ ...plan });
     };
 
-    const handleSavePlan = () => {
-        if (editingPlanId && editedPlan.priceMonthly !== undefined && editedPlan.priceYearly !== undefined) {
+    const handleSavePlan = async () => {
+        if (!editingPlanId || editedPlan.priceMonthly === undefined || editedPlan.priceYearly === undefined) {
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            const planToEdit = plans.find((p) => p.id === editingPlanId);
+            const targetSlug = planToEdit?.slug || editingPlanId;
+
+            // 1. Persist directly to real Supabase database
+            const dbRes = await SupabaseDb.updatePricingPlan(
+                editingPlanId,
+                {
+                    priceMonthly: editedPlan.priceMonthly,
+                    priceYearly: editedPlan.priceYearly,
+                    active: editedPlan.active,
+                    name: editedPlan.name,
+                    description: editedPlan.description,
+                },
+                targetSlug
+            );
+
+            // 2. Persist to local storage cache
             Storage.updatePricingPlan(editingPlanId, {
                 priceMonthly: editedPlan.priceMonthly,
                 priceYearly: editedPlan.priceYearly,
                 active: editedPlan.active,
+                name: editedPlan.name,
+                description: editedPlan.description,
             });
-            setPlans(Storage.getPricingPlans());
+
+            // 3. Update component state
+            setPlans((prev) =>
+                prev.map((p) => {
+                    if (p.id === editingPlanId || p.slug === targetSlug) {
+                        return {
+                            ...p,
+                            priceMonthly: editedPlan.priceMonthly ?? p.priceMonthly,
+                            priceYearly: editedPlan.priceYearly ?? p.priceYearly,
+                            active: editedPlan.active ?? p.active,
+                        };
+                    }
+                    return p;
+                })
+            );
+
             setEditingPlanId(null);
-            alert('✅ Pricing plan updated successfully!');
+            setEditedPlan({});
+
+            if (dbRes.success) {
+                setToast({
+                    message: 'Pricing plan updated successfully in live database!',
+                    type: 'success',
+                });
+            } else {
+                setToast({
+                    message: `Saved locally. Supabase: ${dbRes.error || 'Check admin RLS permission'}`,
+                    type: 'warning',
+                });
+            }
+        } catch (err: any) {
+            setToast({
+                message: `Failed to save plan: ${err.message || 'Unknown error'}`,
+                type: 'error',
+            });
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -62,6 +135,13 @@ export function AdminPricingManager() {
 
     return (
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+            {toast && (
+                <Toast
+                    message={toast.message}
+                    type={toast.type}
+                    onClose={() => setToast(null)}
+                />
+            )}
             {/* Header */}
             <div className="space-y-2">
                 <h1 className="text-3xl sm:text-4xl font-black text-[#1a1c1c] font-['Plus_Jakarta_Sans']">
@@ -182,9 +262,18 @@ export function AdminPricingManager() {
                                             <div className="flex gap-2 pt-2">
                                                 <button
                                                     onClick={handleSavePlan}
-                                                    className="flex-1 px-3 py-2 bg-[#003527] text-white rounded-lg text-xs font-bold hover:bg-[#064e3b] transition-colors flex items-center justify-center gap-1"
+                                                    disabled={isSaving}
+                                                    className="flex-1 px-3 py-2 bg-[#003527] text-white rounded-lg text-xs font-bold hover:bg-[#064e3b] transition-colors flex items-center justify-center gap-1 disabled:opacity-50 cursor-pointer"
                                                 >
-                                                    <Save className="w-3 h-3" /> Save
+                                                    {isSaving ? (
+                                                        <>
+                                                            <Loader2 className="w-3 h-3 animate-spin" /> Saving...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Save className="w-3 h-3" /> Save
+                                                        </>
+                                                    )}
                                                 </button>
                                                 <button
                                                     onClick={handleCancel}
